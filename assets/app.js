@@ -7,14 +7,29 @@
   const STORAGE_KEY = "byteabyte:v1";
 
   /* ================= Conteúdo ================= */
-  const MODULES = window.CONTENT || [];
+  const COURSES = [
+    { id: "py", name: "Python", short: "Python", lang: "py", tagline: "Lógica e programação, do print às funções" },
+    { id: "bd", name: "Banco de Dados", short: "Banco de Dados", lang: "sql", tagline: "SGBD, SQL, integridade, segurança e backup" },
+  ];
+  const COURSE_BY_ID = {};
+  COURSES.forEach((c) => (COURSE_BY_ID[c.id] = c));
+  const MODULES = (window.CONTENT || []).map((m) => {
+    if (!m.course) m.course = "py";
+    return m;
+  });
+  const modulesOf = (c) => MODULES.filter((m) => m.course === c);
   const LESSONS = [];
-  MODULES.forEach((module, mIndex) =>
-    module.lessons.forEach((lesson, lIndex) => LESSONS.push({ module, lesson, mIndex, lIndex, order: LESSONS.length }))
-  );
+  MODULES.forEach((module) => {
+    const cIndex = modulesOf(module.course).indexOf(module);
+    module.lessons.forEach((lesson, lIndex) => LESSONS.push({ module, lesson, mIndex: cIndex, lIndex, order: LESSONS.length, course: module.course }));
+  });
   const LESSON_BY_ID = {};
   LESSONS.forEach((r) => (LESSON_BY_ID[r.lesson.id] = r));
-  const TOTAL_LESSONS = LESSONS.length;
+  const lessonsOf = (c) => LESSONS.filter((r) => r.course === c);
+  const MODULE_BY_ID = {};
+  MODULES.forEach((m) => (MODULE_BY_ID[m.id] = m));
+  /** linguagem de destaque do código na tela atual */
+  let CUR_LANG = "py";
   const stepKey = (lid, i) => lid + "#" + i;
   function findStep(key) {
     const [lid, idx] = key.split("#");
@@ -52,20 +67,29 @@
 
   const TOKEN_RE =
     /(#[^\n]*)|("(?:[^"\\\n]|\\.)*"?|'(?:[^'\\\n]|\\.)*'?)|(__\d+__)|\b(def|return|if|elif|else|for|while|in|and|or|not|break|continue|import|from|pass)\b|\b(True|False|None)\b|\b(print|input|int|float|str|len|range|type|round|append|max|min|sum|abs)\b(?=\s*\()|(\b\d+(?:\.\d+)?\b)/g;
-  function highlight(src) {
+  const SQL_KW =
+    "SELECT|FROM|WHERE|AND|OR|NOT|IN|LIKE|BETWEEN|IS|NULL|ORDER|BY|GROUP|HAVING|LIMIT|OFFSET|AS|JOIN|ON|LEFT|INNER|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|VIEW|DATABASE|USE|DROP|ALTER|ADD|COLUMN|RENAME|TO|PRIMARY|KEY|FOREIGN|REFERENCES|UNIQUE|DEFAULT|CHECK|BEGIN|COMMIT|ROLLBACK|GRANT|REVOKE|USER|IDENTIFIED|ALL|PRIVILEGES|DISTINCT|ASC|DESC|IF|EXISTS|PRAGMA|CASE|WHEN|THEN|ELSE|END";
+  const SQL_RE = new RegExp(
+    "(--[^\\n]*)|('(?:[^'\\n]|'')*'?)|(__\\d+__)|\\b(" +
+      SQL_KW +
+      ")\\b|\\b(INTEGER|INT|TEXT|REAL|VARCHAR|DECIMAL|DATE|BOOLEAN)\\b|\\b(COUNT|SUM|AVG|MIN|MAX|RANDOM|ROUND|UPPER|LOWER|LENGTH)\\b(?=\\s*\\()|(\\b\\d+(?:\\.\\d+)?\\b)",
+    "gi"
+  );
+  function highlight(src, lang) {
+    const RE = (lang || CUR_LANG) === "sql" ? SQL_RE : TOKEN_RE;
     let out = "";
     let last = 0;
     let m;
-    TOKEN_RE.lastIndex = 0;
-    while ((m = TOKEN_RE.exec(src))) {
+    RE.lastIndex = 0;
+    while ((m = RE.exec(src))) {
       out += esc(src.slice(last, m.index));
       const c = m[1] ? "c" : m[2] ? "s" : m[3] ? "gap" : m[4] ? "k" : m[5] ? "v" : m[6] ? "b" : "n";
       out += '<span class="tk-' + c + '">' + esc(m[0]) + "</span>";
-      last = TOKEN_RE.lastIndex;
+      last = RE.lastIndex;
     }
     return out + esc(src.slice(last));
   }
-  const codeView = (code, label) => '<div class="codeview">' + (label ? '<div class="codeview-label">' + esc(label) + "</div>" : "") + "<pre>" + highlight(code) + "</pre></div>";
+  const codeView = (code, label, lang) => '<div class="codeview">' + (label ? '<div class="codeview-label">' + esc(label) + "</div>" : "") + "<pre>" + highlight(code, lang) + "</pre></div>";
   const outView = (text, label) => '<div class="outview"><div class="codeview-label">' + esc(label || "Saída") + "</div><pre>" + esc(text) + "</pre></div>";
 
   const ICON = {
@@ -137,9 +161,11 @@
       help: {},
       review: [],
       current: null,
-      streak: { count: 0, best: 0, last: "" },
+      turma: "",
+      course: "py",
       badges: [],
       lab: null,
+      labSql: null,
       stats: { runs: 0, hints: 0, solutions: 0, codeClean: 0, perfect: 0, reviewed: 0, cards: 0 },
     };
   }
@@ -148,7 +174,6 @@
     if (!raw || typeof raw !== "object") return base;
     const p = Object.assign({}, base, raw);
     p.stats = Object.assign({}, base.stats, raw.stats || {});
-    p.streak = Object.assign({}, base.streak, raw.streak || {});
     ["lessons", "steps", "answers", "drafts", "passed", "help"].forEach((k) => (p[k] = raw[k] && typeof raw[k] === "object" ? raw[k] : {}));
     p.review = Array.isArray(raw.review) ? raw.review : [];
     p.badges = Array.isArray(raw.badges) ? raw.badges : [];
@@ -166,36 +191,27 @@
     const d = new Date();
     return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
   }
-  const dayDiff = (a, b) => Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000);
-  function touchStreak(p) {
-    const t = today();
-    if (p.streak.last === t) return;
-    const diff = p.streak.last ? dayDiff(p.streak.last, t) : 99;
-    p.streak.count = diff === 1 ? p.streak.count + 1 : 1;
-    p.streak.best = Math.max(p.streak.best, p.streak.count);
-    p.streak.last = t;
-  }
-  const currentStreak = (p) => (p.streak.last && dayDiff(p.streak.last, today()) <= 1 ? p.streak.count : 0);
   function starsFor(mistakes, revealed) {
     if (revealed === 0 && mistakes === 0) return 3;
     if (revealed === 0 && mistakes <= 2) return 2;
     return 1;
   }
+  /** Todas as lições ficam abertas: o aluno escolhe por onde começar */
   function lessonUnlocked(p, id) {
-    const ref = LESSON_BY_ID[id];
-    if (!ref) return false;
-    if (ref.lIndex === 0) return true;
-    return Boolean(p.lessons[ref.module.lessons[ref.lIndex - 1].id]);
+    return Boolean(LESSON_BY_ID[id]);
   }
   function moduleProgress(p, m) {
     const done = m.lessons.filter((l) => p.lessons[l.id]).length;
     const st = m.lessons.reduce((a, l) => a + ((p.lessons[l.id] && p.lessons[l.id].stars) || 0), 0);
     return { done, total: m.lessons.length, stars: st, maxStars: m.lessons.length * 3 };
   }
-  function nextLesson(p) {
-    if (p.current && LESSON_BY_ID[p.current.lessonId] && !p.lessons[p.current.lessonId]) return LESSON_BY_ID[p.current.lessonId];
-    return LESSONS.find((r) => !p.lessons[r.lesson.id] && lessonUnlocked(p, r.lesson.id)) || null;
+  /** Lição sugerida: a que está em andamento, ou a primeira não feita (dentro do foco da aula, se houver) */
+  function nextLesson(p, course, onlyMods) {
+    const inScope = (r) => r.course === course && (!onlyMods || onlyMods.includes(r.module.id));
+    if (p.current && LESSON_BY_ID[p.current.lessonId] && !p.lessons[p.current.lessonId] && inScope(LESSON_BY_ID[p.current.lessonId])) return LESSON_BY_ID[p.current.lessonId];
+    return LESSONS.find((r) => inScope(r) && !p.lessons[r.lesson.id]) || null;
   }
+  const courseDone = (p, c) => lessonsOf(c).filter((r) => p.lessons[r.lesson.id]).length;
   const modDone = (p, id) => {
     const m = MODULES.find((x) => x.id === id);
     return m && m.lessons.every((l) => p.lessons[l.id]);
@@ -205,16 +221,21 @@
     { id: "runner", name: "Executor", desc: "Rodou 25 programas", test: (p) => p.stats.runs >= 25 },
     { id: "clean", name: "Código limpo", desc: "5 exercícios de código sem dica nem erro", test: (p) => p.stats.codeClean >= 5 },
     { id: "perfect", name: "Três estrelas", desc: "3 lições com nota máxima", test: (p) => p.stats.perfect >= 3 },
-    { id: "streak3", name: "Em sequência", desc: "Estudou 3 dias seguidos", test: (p) => p.streak.best >= 3 },
     { id: "review", name: "Revisor", desc: "Refez 5 exercícios da revisão", test: (p) => p.stats.reviewed >= 5 },
     { id: "cards", name: "Memória RAM", desc: "Passou por 20 cartões de revisão", test: (p) => p.stats.cards >= 20 },
-    { id: "lab", name: "Cientista", desc: "Usou o Laboratório", test: (p) => Boolean(p.lab) },
+    { id: "lab", name: "Cientista", desc: "Usou o Laboratório", test: (p) => Boolean(p.lab || p.labSql) },
     { id: "decide", name: "Tomador de decisão", desc: "Concluiu o módulo Decisões", test: (p) => modDone(p, "m05") },
     { id: "loops", name: "Loop de estudo", desc: "Concluiu os dois módulos de repetição", test: (p) => modDone(p, "m06") && modDone(p, "m07") },
     { id: "lists", name: "Inventário cheio", desc: "Concluiu o módulo Listas", test: (p) => modDone(p, "m08") },
     { id: "funcs", name: "def mestre():", desc: "Concluiu o módulo Funções", test: (p) => modDone(p, "m09") },
     { id: "arena", name: "Campeão da Arena", desc: "Concluiu o projeto Arena", test: (p) => modDone(p, "m10") },
-    { id: "all", name: "Trilha completa", desc: "Concluiu todas as lições", test: (p) => LESSONS.every((r) => p.lessons[r.lesson.id]) },
+    { id: "all", name: "Pythonista", desc: "Concluiu todas as lições de Python", test: (p) => lessonsOf("py").every((r) => p.lessons[r.lesson.id]) },
+    { id: "sql1", name: "SELECT * FROM conquistas", desc: "Concluiu a primeira lição de Banco de Dados", test: (p) => lessonsOf("bd").some((r) => p.lessons[r.lesson.id]) },
+    { id: "keys", name: "Chave mestra", desc: "Concluiu o módulo Chaves e relacionamentos", test: (p) => modDone(p, "b04") },
+    { id: "integ", name: "Guardião da integridade", desc: "Concluiu o módulo Restrições de integridade", test: (p) => modDone(p, "b06") },
+    { id: "stats", name: "Cientista de dados", desc: "Concluiu o módulo Agrupamentos e estatística", test: (p) => modDone(p, "b09") },
+    { id: "backup", name: "Plano B", desc: "Concluiu o módulo Segurança, transações e backup", test: (p) => modDone(p, "b12") },
+    { id: "allbd", name: "DBA em formação", desc: "Concluiu todas as lições de Banco de Dados", test: (p) => lessonsOf("bd").every((r) => p.lessons[r.lesson.id]) },
   ];
 
   /* ================= Armazenamento (no navegador) ================= */
@@ -245,12 +266,13 @@
     const lower = name.trim().toLowerCase();
     return Object.keys(DB.profiles).find((k) => k.toLowerCase() === lower) || null;
   }
-  function login(name) {
+  function login(name, turma) {
     const existing = profileKey(name);
     const key = existing || name.trim();
     if (!existing) DB.profiles[key] = emptyProgress(key);
     DB.current = key;
     P = DB.profiles[key] = normalize(DB.profiles[key], key);
+    if (turma) P.turma = turma;
     saveDB();
   }
   function logout() {
@@ -266,7 +288,6 @@
     const before = levelInfo(P.xp).level;
     fn(P);
     P.updated = Date.now();
-    if (opts && opts.activity) touchStreak(P);
     const fresh = [];
     BADGES.forEach((b) => {
       if (!P.badges.includes(b.id) && b.test(P)) {
@@ -350,9 +371,12 @@
   function createEditor(host, value, opts) {
     opts = opts || {};
     const minLines = opts.minLines || 8;
+    const lang = opts.lang || CUR_LANG;
     host.innerHTML =
       '<div class="editor"><pre class="editor-gutter" aria-hidden="true"></pre><div class="editor-area"><pre class="editor-hl" aria-hidden="true"></pre>' +
-      '<textarea class="editor-ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Editor de código Python"></textarea></div></div>';
+      '<textarea class="editor-ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Editor de código ' +
+      (lang === "sql" ? "SQL" : "Python") +
+      '"></textarea></div></div>';
     const wrap = $(".editor", host);
     const ta = $(".editor-ta", host);
     const hl = $(".editor-hl", host);
@@ -360,7 +384,7 @@
     ta.value = value;
     function paint() {
       const v = ta.value;
-      hl.innerHTML = highlight(v) + "\n\n";
+      hl.innerHTML = highlight(v, lang) + "\n\n";
       const n = v.split("\n").length;
       let s = "";
       for (let i = 1; i <= n; i++) s += i + "\n";
@@ -428,7 +452,7 @@
         const ls = v.lastIndexOf("\n", s - 1) + 1;
         const line = v.slice(ls, s);
         let indent = (line.match(/^ */) || [""])[0];
-        if (/:\s*(#.*)?$/.test(line)) indent += "    ";
+        if (lang !== "sql" && /:\s*(#.*)?$/.test(line)) indent += "    ";
         insert("\n" + indent);
         return;
       }
@@ -532,6 +556,95 @@
     return { run, clear: placeholder };
   }
 
+  /* ================= Console SQL ================= */
+  function sqlMsg(item) {
+    const k = item.kind;
+    const n = item.changes;
+    const pl = (x, a, b) => x + " " + (x === 1 ? a : b);
+    if (k === "INSERT" || k === "REPLACE") return pl(n, "linha inserida", "linhas inseridas");
+    if (k === "UPDATE") return pl(n, "linha alterada", "linhas alteradas");
+    if (k === "DELETE") return pl(n, "linha apagada", "linhas apagadas");
+    if (k === "CREATE") return /^\s*create\s+view/i.test(item.sql) ? "View criada." : /^\s*create\s+table/i.test(item.sql) ? "Tabela criada." : "Criado.";
+    if (k === "DROP") return "Removido.";
+    if (k === "ALTER") return "Estrutura da tabela alterada.";
+    if (k === "BEGIN") return "Transação aberta.";
+    if (k === "COMMIT" || k === "END") return "Transação confirmada.";
+    if (k === "ROLLBACK") return "Transação desfeita.";
+    return "Comando executado.";
+  }
+  /** opts: { seeds, chart, getDb() (banco que continua entre execuções, no laboratório), onRan(result) } */
+  function createSqlConsole(host, opts) {
+    opts = opts || {};
+    host.innerHTML =
+      '<div class="console sqlconsole' +
+      (opts.compact ? " compact" : "") +
+      '"><div class="console-bar"><span>Resultado</span><span class="console-actions"><button type="button" class="btn tiny ghost" data-a="clear">Limpar</button></span></div><div class="console-out sql-out"></div></div>';
+    const out = $(".console-out", host);
+    function placeholder() {
+      out.innerHTML = '<span class="c-muted">' + esc(opts.placeholder || "Clique em Rodar para ver o resultado aqui.") + "</span>";
+    }
+    placeholder();
+    $('[data-a="clear"]', host).onclick = placeholder;
+    async function run(code) {
+      out.innerHTML = '<span class="c-muted">Carregando o banco...</span>';
+      const ok = await SQ.ensure();
+      if (!ok) {
+        out.innerHTML = '<span class="c-err">Não foi possível carregar o SQL. Recarregue a página.</span>';
+        return null;
+      }
+      const persistent = opts.getDb ? opts.getDb() : null;
+      const db = persistent || SQ.open(opts.seeds || ["arena"]);
+      const r = SQ.exec(db, code);
+      let h = "";
+      const multi = r.items.length + (r.err ? 1 : 0) > 1;
+      r.items.forEach((it) => {
+        h += '<div class="sql-block">';
+        if (multi) h += '<div class="sql-stmt">' + highlight(it.sql.trim().replace(/\s+/g, " ").slice(0, 90), "sql") + "</div>";
+        if (it.columns.length) {
+          h += SQ.tableHtml(it);
+          if (opts.chart && SQ.chartable(it)) h += SQ.chartHtml(it);
+          else if (opts.chartButton && SQ.chartable(it)) h += '<button class="btn tiny ghost chart-btn">Ver gráfico</button><div class="chart-slot" hidden>' + SQ.chartHtml(it) + "</div>";
+        } else h += '<div class="sql-ok">✓ ' + esc(sqlMsg(it)) + "</div>";
+        h += "</div>";
+      });
+      if (r.err) h += '<div class="sql-block"><div class="c-err">' + esc(SQ.friendly(r.err.msg, code, db)) + '</div><div class="c-muted small">' + esc(r.err.msg) + "</div></div>";
+      if (!r.items.length && !r.err) h = '<span class="c-muted">Nenhum comando para executar. Escreva um comando SQL terminado em ponto e vírgula.</span>';
+      out.innerHTML = h;
+      $$(".chart-btn", out).forEach(
+        (b) =>
+          (b.onclick = () => {
+            const slot = b.nextElementSibling;
+            slot.hidden = !slot.hidden;
+            b.textContent = slot.hidden ? "Ver gráfico" : "Esconder gráfico";
+          })
+      );
+      if (!persistent) db.close();
+      if (opts.onRan) opts.onRan(r);
+      return r;
+    }
+    return { run, clear: placeholder };
+  }
+
+  /** Painel com as tabelas do banco (nomes e colunas) */
+  function schemaHtml(db) {
+    return (
+      '<div class="schema">' +
+      SQ.tables(db)
+        .map(
+          (t) =>
+            '<details class="schema-t"><summary><span class="schema-kind">' +
+            (t.type === "view" ? "view" : "tabela") +
+            "</span> " +
+            esc(t.name) +
+            '</summary><ul>' +
+            t.columns.map((c) => "<li>" + (c.pk ? '<b title="chave primária">' + esc(c.name) + " 🔑</b>" : esc(c.name)) + ' <span class="muted">' + esc(c.type || "") + "</span></li>").join("") +
+            "</ul></details>"
+        )
+        .join("") +
+      "</div>"
+    );
+  }
+
   /* ================= Estrutura da página ================= */
   const app = () => $("#app");
   const NAV = [
@@ -559,14 +672,8 @@
     const hud = $("#hud");
     if (!hud || !P) return;
     const lv = levelInfo(P.xp);
-    const st = currentStreak(P);
     hud.innerHTML =
-      '<span class="hud-streak' +
-      (st ? " on" : "") +
-      '" title="Dias seguidos estudando">' +
-      ICON.flame(st > 0) +
-      st +
-      "</span>" +
+      (P.turma ? '<span class="hud-turma" title="Sua turma">' + esc(P.turma) + "</span>" : "") +
       '<div class="hud-level" title="' +
       lv.into +
       "/" +
@@ -592,7 +699,10 @@
       pop.innerHTML =
         '<div class="usermenu-name">' +
         esc(P.name) +
-        '</div><div class="save-state saved">Salvo neste navegador</div><a href="#/perfil">Perfil e entrega</a><button data-a="report">Baixar relatório</button><button data-a="logout">Trocar de aluno</button>';
+        "</div>" +
+        '<div class="save-state saved">' +
+        (P.turma ? "Turma " + esc(P.turma) + " · " : "") +
+        'salvo neste navegador</div><a href="#/perfil">Perfil e entrega</a><button data-a="report">Baixar relatório</button><button data-a="logout">Trocar de aluno</button>';
       $(".usermenu").appendChild(pop);
       pop.addEventListener("click", (ev) => {
         const a = ev.target.closest("[data-a]");
@@ -604,24 +714,75 @@
     };
   }
 
+  /* ================= Foco da aula (o professor define por link) ================= */
+  const FOCUS_KEY = "byteabyte:foco";
+  let FOCUS = null;
+  function readFocusFromUrl() {
+    let q;
+    try {
+      q = new URLSearchParams(location.search);
+    } catch (e) {
+      return;
+    }
+    if (!q.has("foco") && !q.has("turma")) return;
+    const mods = (q.get("foco") || "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter((id) => MODULE_BY_ID[id]);
+    FOCUS = { mods, turma: (q.get("turma") || "").trim().slice(0, 30), strict: q.get("so") === "1" && mods.length > 0, day: today() };
+    try {
+      localStorage.setItem(FOCUS_KEY, JSON.stringify(FOCUS));
+    } catch (e) {}
+    try {
+      history.replaceState(null, "", location.pathname + location.hash);
+    } catch (e) {}
+  }
+  function loadFocus() {
+    if (FOCUS) return;
+    try {
+      const f = JSON.parse(localStorage.getItem(FOCUS_KEY) || "null");
+      FOCUS = f && f.day === today() ? f : null;
+    } catch (e) {
+      FOCUS = null;
+    }
+  }
+  const focusMods = () => (FOCUS && FOCUS.mods && FOCUS.mods.length ? FOCUS.mods : null);
+  const focusCourse = () => (focusMods() ? MODULE_BY_ID[focusMods()[0]].course : null);
+
   /* ================= Tela: boas-vindas ================= */
+  function knownTurmas() {
+    const set = new Set();
+    Object.values(DB.profiles).forEach((p) => p.turma && set.add(p.turma));
+    if (FOCUS && FOCUS.turma) set.add(FOCUS.turma);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }
   function viewWelcome() {
     const names = Object.keys(DB.profiles);
+    const turmaDefault = FOCUS && FOCUS.turma ? FOCUS.turma : "";
     app().innerHTML =
       '<div class="auth">' +
       '<span class="brand auth-brand"><span class="brand-mark">&gt;_</span><span class="brand-name">' +
       SITE +
       "</span></span>" +
       '<div class="welcome-hero"><h1 class="display">Programar se aprende <span class="glow">programando</span>.</h1>' +
-      '<p class="lead">Python do zero às funções. Lições curtas, exercícios corrigidos na hora, XP e conquistas.</p></div>' +
+      '<p class="lead">Python e Banco de Dados. Lições curtas, exercícios corrigidos na hora, XP e conquistas.</p></div>' +
       '<div class="panel auth-card">' +
       '<form class="form" id="nameForm"><label class="field"><span>Seu nome</span><input id="nameInput" maxlength="40" autocomplete="off" placeholder="Nome e sobrenome" required></label>' +
-      '<p class="small muted">Use o mesmo nome sempre. Ele aparece no relatório que você entrega.</p>' +
+      '<label class="field"><span>Sua turma</span><input id="turmaInput" maxlength="30" autocomplete="off" list="turmaList" placeholder="Ex.: 2º A" value="' +
+      esc(turmaDefault) +
+      '"></label><datalist id="turmaList">' +
+      knownTurmas()
+        .map((t) => '<option value="' + esc(t) + '"></option>')
+        .join("") +
+      "</datalist>" +
+      '<p class="small muted">Use sempre o mesmo nome. Nome e turma aparecem no relatório que você entrega.</p>' +
       '<p class="form-error" id="nameErr" hidden></p>' +
       '<button class="btn primary lg block">Começar</button></form>' +
       (names.length
         ? '<div class="field"><span class="small muted">Continuar neste computador como</span><div class="row">' +
-          names.map((n) => '<button class="btn small" data-p="' + esc(n) + '">' + esc(n) + " · " + (DB.profiles[n].xp || 0) + " XP</button>").join("") +
+          names
+            .map((n) => '<button class="btn small" data-p="' + esc(n) + '">' + esc(n) + (DB.profiles[n].turma ? " · " + esc(DB.profiles[n].turma) : "") + "</button>")
+            .join("") +
           "</div></div>"
         : "") +
       '<div class="divider"></div>' +
@@ -634,28 +795,115 @@
     $("#nameForm").onsubmit = (e) => {
       e.preventDefault();
       const n = $("#nameInput").value.trim().replace(/\s+/g, " ");
+      const t = $("#turmaInput").value.trim().replace(/\s+/g, " ");
+      const err = $("#nameErr");
       if (n.length < 3) {
-        $("#nameErr").hidden = false;
-        $("#nameErr").textContent = "Digite seu nome (pelo menos 3 letras).";
+        err.hidden = false;
+        err.textContent = "Digite seu nome (pelo menos 3 letras).";
         return;
       }
-      login(n);
+      if (!t) {
+        err.hidden = false;
+        err.textContent = "Digite sua turma.";
+        return;
+      }
+      login(n, t);
       go("#/trilha");
     };
-    $$("[data-p]").forEach((b) => (b.onclick = () => (login(b.dataset.p), go("#/trilha"))));
+    $$("[data-p]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          login(b.dataset.p, FOCUS && FOCUS.turma && !DB.profiles[b.dataset.p].turma ? FOCUS.turma : null);
+          go("#/trilha");
+        })
+    );
     $("#importFile").onchange = (e) => importFile(e.target.files[0], true);
     setTimeout(() => $("#nameInput") && $("#nameInput").focus(), 50);
   }
 
   /* ================= Tela: trilha ================= */
+  let trilhaCourse = null;
+  function moduleCard(m, next) {
+    const mp = moduleProgress(P, m);
+    let h =
+      '<article class="module acc-' +
+      m.accent +
+      '"><header class="module-head"><span class="module-num">' +
+      pad2(modulesOf(m.course).indexOf(m) + 1) +
+      '</span><div class="module-title"><h2>' +
+      esc(m.title) +
+      "</h2><p>" +
+      esc(m.tagline) +
+      '</p></div><div class="module-meta"><span class="mono small">' +
+      mp.done +
+      "/" +
+      mp.total +
+      "</span>" +
+      stars(mp.stars, mp.maxStars, "sm") +
+      '</div></header><ol class="lessons">';
+    m.lessons.forEach((l, li) => {
+      const res = P.lessons[l.id];
+      const going = P.current && P.current.lessonId === l.id && !res;
+      const isNext = next && next.lesson.id === l.id;
+      const cls = res ? "done" : isNext ? "next" : "open";
+      h +=
+        '<li class="lesson ' +
+        cls +
+        '"><a class="lesson-link" href="#/licao/' +
+        l.id +
+        '"><span class="lesson-node">' +
+        (res ? ICON.check : li + 1) +
+        '</span><span class="lesson-text"><b>' +
+        esc(l.title) +
+        "</b><span>" +
+        esc(l.summary) +
+        '</span></span><span class="lesson-end">' +
+        (res ? stars(res.stars, 3, "sm") : going ? '<span class="mono small acc-text">em andamento</span>' : '<span class="mono small muted">' + l.steps.length + " etapas</span>") +
+        "</span></a></li>";
+    });
+    return h + "</ol></article>";
+  }
   function viewTrilha() {
+    const fm = focusMods();
+    const fc = focusCourse();
+    let course = trilhaCourse || fc || P.course || "py";
+    if (FOCUS && FOCUS.strict && fc) course = fc;
+    if (!COURSE_BY_ID[course]) course = "py";
+    trilhaCourse = course;
+    if (P.course !== course) update((p) => (p.course = course));
+    CUR_LANG = COURSE_BY_ID[course].lang;
+    const strict = FOCUS && FOCUS.strict && fc === course;
+    const focusHere = fm && fc === course ? fm : null;
     const lv = levelInfo(P.xp);
-    const next = nextLesson(P);
-    const done = Object.keys(P.lessons).length;
-    const st = currentStreak(P);
+    const next = nextLesson(P, course, focusHere);
+    const totalStars = Object.values(P.lessons).reduce((a, l) => a + l.stars, 0);
     const inProgress = P.current && next && P.current.lessonId === next.lesson.id && P.current.step > 0;
-    let h = '<div class="wrap page"><section class="dash"><div class="panel dash-main">';
-    h += '<p class="eyebrow">Sua trilha</p><h1 class="h1">Olá, ' + esc(P.name.split(" ")[0]) + "</h1>";
+
+    let h = '<div class="wrap page">';
+    h += '<div class="course-tabs" role="tablist" aria-label="Disciplina">';
+    COURSES.forEach((c) => {
+      const locked = FOCUS && FOCUS.strict && fc && c.id !== fc;
+      h +=
+        '<button role="tab" class="course-tab' +
+        (c.id === course ? " on" : "") +
+        '" data-course="' +
+        c.id +
+        '" aria-selected="' +
+        (c.id === course) +
+        '"' +
+        (locked ? " disabled title=\"O professor pediu foco em outra disciplina hoje\"" : "") +
+        "><b>" +
+        esc(c.name) +
+        "</b><span>" +
+        courseDone(P, c.id) +
+        "/" +
+        lessonsOf(c.id).length +
+        " lições</span></button>";
+    });
+    h += "</div>";
+
+    h += '<section class="dash"><div class="panel dash-main">';
+    h += '<p class="eyebrow">' + esc(COURSE_BY_ID[course].name) + "</p><h1 class=\"h1\">Olá, " + esc(P.name.split(" ")[0]) + "</h1>";
     h +=
       '<div class="lvrow"><span class="lvchip">Nível ' +
       lv.level +
@@ -672,14 +920,14 @@
       '<div class="dash-stats"><div><b>' +
       P.xp +
       "</b><span>XP total</span></div><div><b>" +
-      done +
+      courseDone(P, course) +
       "/" +
-      TOTAL_LESSONS +
-      '</b><span>lições</span></div><div><b class="streakval">' +
-      ICON.flame(st > 0) +
-      " " +
-      st +
-      "</b><span>dias seguidos</span></div><div><b>" +
+      lessonsOf(course).length +
+      "</b><span>lições de " +
+      esc(COURSE_BY_ID[course].short) +
+      "</span></div><div><b>" +
+      totalStars +
+      "</b><span>estrelas</span></div><div><b>" +
       P.badges.length +
       "</b><span>conquistas</span></div></div>";
     if (next)
@@ -687,12 +935,22 @@
         '<a href="#/licao/' +
         next.lesson.id +
         '" class="continue"><span class="continue-label">' +
-        (inProgress ? "Continuar de onde parou" : done ? "Próxima lição" : "Começar") +
+        (inProgress ? "Continuar de onde parou" : focusHere ? "Foco da aula" : courseDone(P, course) ? "Sugestão" : "Começar") +
         '</span><span class="continue-title">' +
         esc(next.module.title + " · " + next.lesson.title) +
         '</span><span class="continue-arrow" aria-hidden="true">→</span></a>';
-    else h += '<div class="continue done"><span class="continue-label">Trilha completa</span><span class="continue-title">Você concluiu todas as lições.</span></div>';
-    h += "</div><div class=\"dash-side\">";
+    else
+      h +=
+        '<div class="continue done"><span class="continue-label">' +
+        (focusHere ? "Foco da aula concluído" : "Trilha completa") +
+        '</span><span class="continue-title">' +
+        (focusHere ? "Você fez todas as lições do foco de hoje. Revise ou escolha outro módulo." : "Você concluiu todas as lições desta disciplina.") +
+        "</span></div>";
+    if (!P.turma)
+      h +=
+        '<form class="turma-ask" id="turmaAsk"><span>Qual é a sua turma?</span><input id="turmaAskIn" maxlength="30" placeholder="ex.: 2º A" required><button class="btn small">Salvar</button></form>';
+    h += '<p class="small muted">Todas as lições estão abertas: escolha por onde começar.</p>';
+    h += '</div><div class="dash-side">';
     h +=
       '<div class="panel side-card deliver"><p class="eyebrow">Entrega</p><h3 class="h3">Relatório para o professor</h3><p class="small muted">No fim da aula, baixe o arquivo com seu progresso, respostas e códigos e envie para o professor.</p><button class="btn primary" id="reportBtn">Baixar relatório</button></div>';
     h +=
@@ -701,52 +959,53 @@
       '</h3><p class="small muted">' +
       (P.review.length ? "Exercícios que você errou ou pulou ficam aqui para treinar de novo." : "Relembre os conceitos de cada módulo em cartões rápidos.") +
       "</p></a>";
-    h += "</div></section><section class=\"path\">";
-    MODULES.forEach((m, mi) => {
-      const mp = moduleProgress(P, m);
+    h += "</div></section>";
+
+    const mods = modulesOf(course);
+    if (focusHere) {
       h +=
-        '<article class="module acc-' +
-        m.accent +
-        '"><header class="module-head"><span class="module-num">' +
-        pad2(mi + 1) +
-        '</span><div class="module-title"><h2>' +
-        esc(m.title) +
-        "</h2><p>" +
-        esc(m.tagline) +
-        '</p></div><div class="module-meta"><span class="mono small">' +
-        mp.done +
-        "/" +
-        mp.total +
-        "</span>" +
-        stars(mp.stars, mp.maxStars, "sm") +
-        '</div></header><ol class="lessons">';
-      m.lessons.forEach((l, li) => {
-        const res = P.lessons[l.id];
-        const unlocked = lessonUnlocked(P, l.id);
-        const isNext = next && next.lesson.id === l.id;
-        const cls = res ? "done" : isNext ? "next" : unlocked ? "open" : "locked";
-        const inner =
-          '<span class="lesson-node">' +
-          (res ? ICON.check : unlocked ? li + 1 : ICON.lock) +
-          '</span><span class="lesson-text"><b>' +
-          esc(l.title) +
-          "</b><span>" +
-          esc(unlocked ? l.summary : "Conclua a lição anterior") +
-          '</span></span><span class="lesson-end">' +
-          (res ? stars(res.stars, 3, "sm") : '<span class="mono small muted">' + l.steps.length + " etapas</span>") +
-          "</span>";
-        h +=
-          '<li class="lesson ' +
-          cls +
-          '">' +
-          (unlocked ? '<a class="lesson-link" href="#/licao/' + l.id + '">' + inner + "</a>" : '<div class="lesson-link" aria-disabled="true">' + inner + "</div>") +
-          "</li>";
-      });
-      h += "</ol></article>";
-    });
-    h += "</section></div>";
+        '<section class="focus-box"><div class="focus-head"><span class="eyebrow">Foco da aula' +
+        (FOCUS.turma ? " · " + esc(FOCUS.turma) : "") +
+        '</span><span class="small muted">' +
+        (strict ? "Hoje o professor liberou só estes módulos." : "O professor pediu atenção a estes módulos hoje.") +
+        '</span></div><div class="path">' +
+        mods
+          .filter((m) => focusHere.includes(m.id))
+          .map((m) => moduleCard(m, next))
+          .join("") +
+        "</div></section>";
+      if (!strict) {
+        const rest = mods.filter((m) => !focusHere.includes(m.id));
+        if (rest.length)
+          h +=
+            '<details class="others"><summary>Outros módulos de ' +
+            esc(COURSE_BY_ID[course].short) +
+            " (" +
+            rest.length +
+            ')</summary><div class="path">' +
+            rest.map((m) => moduleCard(m, next)).join("") +
+            "</div></details>";
+      }
+    } else h += '<section class="path">' + mods.map((m) => moduleCard(m, next)).join("") + "</section>";
+    h += "</div>";
     const main = shell("trilha", h);
     $("#reportBtn", main).onclick = downloadReport;
+    if ($("#turmaAsk", main))
+      $("#turmaAsk", main).onsubmit = (e) => {
+        e.preventDefault();
+        const v = $("#turmaAskIn", main).value.trim().slice(0, 30);
+        if (!v) return;
+        update((p) => (p.turma = v));
+        renderHud();
+        viewTrilha();
+      };
+    $$("[data-course]", main).forEach(
+      (b) =>
+        (b.onclick = () => {
+          trilhaCourse = b.dataset.course;
+          viewTrilha();
+        })
+    );
   }
 
   /* ================= Etapas ================= */
@@ -794,7 +1053,7 @@
     if (s.code && s.run) {
       const resetBtn = $('[data-a="reset"]', el);
       const ed = createEditor($(".ed", el), s.code, { minLines: Math.min(s.code.split("\n").length, 10), onRun: run, onChange: (v) => (resetBtn.hidden = v === s.code) });
-      const con = createConsole($(".con", el), { compact: true });
+      const con = ctx.lang === "sql" ? createSqlConsole($(".con", el), { compact: true, chart: s.chart }) : createConsole($(".con", el), { compact: true });
       function run() {
         update((p) => p.stats.runs++);
         con.run(ed.get());
@@ -1103,16 +1362,17 @@
   }
 
   /* Linhas da solução que o aluno ainda precisa escrever (as que não estão no código inicial) */
-  function revealCandidates(step, starter) {
+  function revealCandidates(step, starter, lang) {
+    const cm = lang === "sql" ? "--" : "#";
     const have = {};
     starter.split("\n").forEach((l) => {
       const t = l.trim();
-      if (t && !t.startsWith("#")) have[t] = (have[t] || 0) + 1;
+      if (t && !t.startsWith(cm)) have[t] = (have[t] || 0) + 1;
     });
     const out = [];
     step.solution.split("\n").forEach((l, i) => {
       const t = l.trim();
-      if (!t || t.startsWith("#")) return;
+      if (!t || t.startsWith(cm)) return;
       if (have[t]) {
         have[t]--;
         return;
@@ -1132,20 +1392,28 @@
     const key = ctx.key;
     const starter = starterFor(s, ctx.ref, ctx.index);
     const initial = P.drafts[key] != null ? P.drafts[key] : starter;
-    const lines = revealCandidates(s, starter);
+    const isSql = ctx.lang === "sql";
+    const lines = revealCandidates(s, starter, ctx.lang);
     const lineLimit = Math.floor(lines.length / 2);
     const help = Object.assign({ hints: 0, lines: 0, pastes: 0 }, (P.help || {})[key]);
     let state = "work";
     let fails = 0;
     let showSol = false;
     let h = '<div class="step step-code"><div class="code-layout"><div class="code-brief">';
-    h += '<p class="eyebrow">' + (s.bug ? "Conserte o código" : "Exercício de código") + '</p><h2 class="step-title">' + esc(s.title) + '</h2><div class="prose"><p>' + rich(s.prompt) + "</p></div>";
+    h += '<p class="eyebrow">' + (s.bug ? "Conserte o código" : isSql ? "Exercício de SQL" : "Exercício de código") + '</p><h2 class="step-title">' + esc(s.title) + '</h2><div class="prose"><p>' + rich(s.prompt) + "</p></div>";
     if (s.example) {
       h += '<div class="example"><div class="codeview-label">' + (s.example.calls ? "Como a função deve responder" : "Exemplo de execução") + "</div>";
       if (s.example.inputs && s.example.inputs.length) h += '<p class="example-in">Digitando: ' + s.example.inputs.map((v) => '<code class="typed">' + esc(v) + "</code>").join(" ") + "</p>";
       h += "<pre>" + esc(s.example.output) + "</pre>";
       if (s.example.inputs && s.example.inputs.length) h += '<p class="small muted">A correção ignora as perguntas do input. Ela confere o que o print mostra.</p>';
       h += "</div>";
+    }
+    if (isSql) {
+      if (s.check)
+        h += '<div class="example"><div class="codeview-label">A correção roda esta consulta depois do seu código</div><pre>' + highlight(s.check, "sql") + '</pre><div class="expected-slot"></div></div>';
+      else h += '<div class="example"><div class="codeview-label">Resultado esperado</div><div class="expected-slot"><span class="small muted">Carregando...</span></div></div>';
+      if (s.probes) h += '<p class="small muted">A correção também testa se o banco barra dados errados e aceita os certos.</p>';
+      h += '<details class="schema-box"><summary>Tabelas do banco</summary><div class="schema-slot"></div></details>';
     }
     if (s.fn) h += '<p class="small muted">A correção chama a sua função <code class="ic">' + esc(s.fn) + "</code> com vários valores.</p>";
     h += '<div class="helpbox"></div><div class="solution"></div></div>';
@@ -1165,7 +1433,8 @@
     let saveTimer = null;
     let pasteTimer = null;
     const ed = createEditor($(".ed", el), initial, {
-      minLines: 10,
+      minLines: isSql ? 7 : 10,
+      lang: ctx.lang,
       onRun: run,
       noPaste: true,
       onPasteBlocked: () => {
@@ -1173,7 +1442,9 @@
         saveHelp();
         const n = $(".nopaste-note", el);
         n.classList.add("nopaste-on");
-        n.textContent = "Colar está desativado aqui. Digite o código: é escrevendo que a mão aprende onde vão os dois-pontos, as aspas e os espaços.";
+        n.textContent = isSql
+          ? "Colar está desativado aqui. Digite o comando: é escrevendo que a mão aprende onde vão as vírgulas, as aspas e o ponto e vírgula."
+          : "Colar está desativado aqui. Digite o código: é escrevendo que a mão aprende onde vão os dois-pontos, as aspas e os espaços.";
         clearTimeout(pasteTimer);
         pasteTimer = setTimeout(() => {
           n.classList.remove("nopaste-on");
@@ -1185,7 +1456,20 @@
         saveTimer = setTimeout(() => update((p) => (p.drafts[key] = v)), 1500);
       },
     });
-    const con = createConsole($(".con", el), { fn: s.fn, placeholder: "Rodar mostra o resultado aqui. Verificar confere se o exercício está certo." });
+    const conPh = "Rodar mostra o resultado aqui. Verificar confere se o exercício está certo.";
+    const con = isSql ? createSqlConsole($(".con", el), { chart: s.chart, placeholder: conPh }) : createConsole($(".con", el), { fn: s.fn, placeholder: conPh });
+    if (isSql)
+      SQ.ensure().then((ok) => {
+        if (!ok || !el.isConnected) return;
+        const slot = $(".expected-slot", el);
+        if (slot) {
+          const e = SQ.expected(s);
+          slot.innerHTML = e ? (s.check ? '<div class="codeview-label">Ela deve mostrar</div>' : "") + SQ.tableHtml(e, 15) + (s.chart && SQ.chartable(e) ? SQ.chartHtml(e) : "") : "";
+        }
+        const db = SQ.open(s.seed ? [s.seed] : ["arena"]);
+        $(".schema-slot", el).innerHTML = schemaHtml(db);
+        db.close();
+      });
 
     function run() {
       update((p) => {
@@ -1267,8 +1551,8 @@
       const res = $(".result", el);
       res.innerHTML = feedback(
         "ok",
-        "Todos os testes passaram!",
-        rich(s.after || "Se o seu código ficou diferente da solução e passou nos testes, está valendo: existem vários jeitos certos."),
+        isSql ? "Resultado correto!" : "Todos os testes passaram!",
+        rich(s.after || (isSql ? "Se o seu comando ficou diferente da solução e deu o mesmo resultado, está valendo: existem vários jeitos certos." : "Se o seu código ficou diferente da solução e passou nos testes, está valendo: existem vários jeitos certos.")),
         '<button class="btn primary lg" data-a="next">Continuar</button>'
       );
       $('[data-a="next"]', res).onclick = ctx.onNext;
@@ -1279,12 +1563,24 @@
     }
     async function verify() {
       if (state !== "work") return;
-      PY.stop();
+      if (!isSql) PY.stop();
       const btn = $('[data-a="verify"]', el);
       btn.disabled = true;
       btn.textContent = "Verificando...";
       const code = ed.get();
       const results = [];
+      let sqlFail = null;
+      if (isSql) {
+        const ok = await SQ.ensure();
+        let v;
+        try {
+          v = ok ? SQ.verify(s, code) : { ok: false, kind: "internal", msg: "Não foi possível carregar o SQL. Recarregue a página." };
+        } catch (e) {
+          v = { ok: false, kind: "internal", msg: String(e) };
+        }
+        results.push({ ok: v.ok });
+        if (!v.ok) sqlFail = v;
+      } else {
       const ok = await PY.ensure();
       if (!ok) results.push({ t: s.tests[0], ok: false, errText: "Não foi possível carregar o Python. Recarregue a página." });
       else
@@ -1302,6 +1598,7 @@
           const cmp = PY.compare(got, t.expect, t.last);
           results.push({ t, ok: cmp.ok, got, badLine: cmp.badLine });
         }
+      }
       btn.disabled = false;
       btn.textContent = "Verificar";
       const allOk = results.every((x) => x.ok);
@@ -1322,7 +1619,8 @@
       const bad = results.find((x) => !x.ok);
       const passed = results.filter((x) => x.ok).length;
       const res = $(".result", el);
-      res.innerHTML = feedback("bad", passed + " de " + results.length + " testes passaram", testReport(bad, s.fn), '<button class="btn ghost" data-a="skip">Pular por agora</button>');
+      if (isSql) res.innerHTML = feedback("bad", sqlFailTitle(sqlFail), sqlReport(sqlFail), '<button class="btn ghost" data-a="skip">Pular por agora</button>');
+      else res.innerHTML = feedback("bad", passed + " de " + results.length + " testes passaram", testReport(bad, s.fn), '<button class="btn ghost" data-a="skip">Pular por agora</button>');
       $('[data-a="skip"]', res).onclick = skip;
       renderBrief();
     }
@@ -1331,6 +1629,55 @@
     renderBrief();
     renderReset(false);
     showIdle();
+  }
+
+  function sqlFailTitle(v) {
+    if (v.kind === "error" || v.kind === "check-error") return "O comando deu erro";
+    if (v.kind === "require") return "Falta uma parte";
+    if (v.kind === "probe") return "As regras do banco não estão certas";
+    if (v.kind === "internal") return "Não deu para corrigir";
+    return "Ainda não é o resultado esperado";
+  }
+  function sqlDiff(got, exp, label) {
+    return (
+      '<div class="diff sqldiff"><div><span class="codeview-label">Esperado</span>' +
+      (exp ? SQ.tableHtml(exp, 12) : "<pre>(nada)</pre>") +
+      '</div><div><span class="codeview-label">' +
+      esc(label || "Seu resultado") +
+      "</span>" +
+      (got ? SQ.tableHtml(got, 12) : "<pre>(nenhuma tabela)</pre>") +
+      "</div></div>"
+    );
+  }
+  function sqlWhy(cmp) {
+    if (!cmp) return "";
+    if (cmp.why === "noresult") return "Seu código não mostrou nenhuma tabela de resultado. Faltou o SELECT?";
+    if (cmp.why === "cols") return "O resultado tem " + cmp.got + " coluna(s), mas o esperado tem " + cmp.exp + ". Confira a lista de colunas depois do SELECT.";
+    if (cmp.why === "count") return "O resultado tem " + cmp.got + " linha(s), mas o esperado tem " + cmp.exp + ". Confira o WHERE, o LIMIT ou o GROUP BY.";
+    if (cmp.why === "order") return "As linhas estão certas, mas a ordem não. Confira o ORDER BY (ASC ou DESC?).";
+    return "Os valores não batem. Confira as colunas escolhidas, as contas e os filtros.";
+  }
+  function sqlReport(v) {
+    if (v.kind === "require" || v.kind === "internal") return '<p class="errline">' + esc(v.msg) + "</p>";
+    if (v.kind === "error" || v.kind === "check-error")
+      return (v.kind === "check-error" ? '<p class="small muted">A consulta de conferência falhou depois do seu código.</p>' : "") + '<p class="errline">' + esc(v.friendly || v.msg) + '</p><p class="mono small muted">' + esc(v.msg) + "</p>";
+    if (v.kind === "probe")
+      return (
+        '<p class="errline">' +
+        (v.expectOk ? "O banco recusou um comando que deveria aceitar:" : "O banco aceitou um comando que deveria recusar:") +
+        "</p>" +
+        codeView(v.probe, "", "sql") +
+        (v.expectOk && v.msg ? '<p class="mono small muted">' + esc(v.msg) + "</p>" : "") +
+        '<p class="small muted">' +
+        (v.expectOk ? "Alguma restrição está mais rígida do que o pedido." : "Falta alguma restrição (NOT NULL, UNIQUE, CHECK ou FOREIGN KEY?).") +
+        "</p>"
+      );
+    if (v.kind === "check") return '<p class="errline">Depois do seu código, o banco não ficou como o esperado. ' + esc(sqlWhy(v.cmp)) + "</p>" + sqlDiff(v.got, v.exp, "Seu banco ficou assim");
+    let h = "";
+    if (v.variant)
+      h += '<p class="errline">Com os dados originais deu certo, mas a correção também testa com mais jogadores, partidas e itens, e aí não bateu. Parece que a resposta foi escrita na mão em vez de usar a condição pedida.</p><p class="small muted">Resultado com os dados extras:</p>';
+    else h += '<p class="errline">' + esc(sqlWhy(v.cmp)) + "</p>";
+    return h + sqlDiff(v.got, v.exp);
   }
 
   function testReport(r, fn) {
@@ -1372,9 +1719,9 @@
       shell(
         "trilha",
         '<div class="wrap page narrowpage"><div class="panel"><h1 class="h2">' +
-          (lref ? "Lição bloqueada" : "Lição não encontrada") +
+          "Lição não encontrada" +
           '</h1><p class="muted">' +
-          (lref ? "Conclua a lição anterior deste módulo para abrir esta." : "Confira o endereço.") +
+          "Confira o endereço." +
           '</p><p><a href="#/trilha" class="btn primary">Voltar à trilha</a></p></div></div>'
       );
       return;
@@ -1437,6 +1784,8 @@
       $("#pxp").textContent = "+" + gained + " XP";
       $("#segs").innerHTML = items.map((_, i) => "<i class=\"" + (i < pos ? results[i] || "ok" : i === pos ? "cur" : "") + '"></i>').join("");
       player.classList.toggle("wide", item.step.kind === "code");
+      const lang = item.ref.module.course === "bd" ? "sql" : "py";
+      CUR_LANG = lang;
       const body = $("#pbody");
       body.innerHTML = (review ? '<p class="eyebrow">Revisão · ' + esc(item.ref.module.title + " · " + item.ref.lesson.title) + "</p>" : "") + '<div class="step-host"></div>';
       const ctx = {
@@ -1444,6 +1793,7 @@
         key: item.key,
         ref: item.ref,
         index: item.index,
+        lang,
         onMistake: (answer) => {
           record(item, (a) => {
             a.tries++;
@@ -1534,7 +1884,10 @@
         );
       }
       if (st === 3 || first) confetti();
-      const nextRef = review ? null : LESSONS[lref.order + 1];
+      let nextRef = review ? null : LESSONS[lref.order + 1];
+      if (nextRef && nextRef.course !== lref.course) nextRef = null;
+      const fm = focusMods();
+      if (nextRef && fm && fm.length && FOCUS && FOCUS.strict && !fm.includes(nextRef.module.id)) nextRef = null;
       let h = '<div class="wrap page narrowpage"><div class="panel finish">';
       h += '<p class="eyebrow">' + (review ? "Revisão concluída" : "Lição concluída") + '</p><h1 class="h1">' + esc(review ? "Treino feito" : lref.lesson.title) + "</h1>";
       if (!review) h += stars(st, 3, "lg");
@@ -1574,10 +1927,24 @@
 
   /* ================= Tela: revisão ================= */
   const KIND = { quiz: "Pergunta", fill: "Lacunas", order: "Montar código", code: "Código" };
+  /** <option>s dos módulos, separados por disciplina */
+  function moduleOptions(selected) {
+    return COURSES.map(
+      (c) =>
+        '<optgroup label="' +
+        esc(c.name) +
+        '">' +
+        modulesOf(c.id)
+          .map((m, n) => '<option value="' + m.id + '"' + (m.id === selected ? " selected" : "") + ">" + pad2(n + 1) + " · " + esc(m.title) + "</option>")
+          .join("") +
+        "</optgroup>"
+    ).join("");
+  }
   function viewRevisao() {
     const pending = P.review.map(findStep).filter((x) => x && x.step.kind !== "explain");
     const started = MODULES.filter((m) => m.lessons.some((l) => P.lessons[l.id]));
-    let mod = (started[started.length - 1] || MODULES[0]).id;
+    const fm = focusMods();
+    let mod = fm ? fm[0] : (started[started.length - 1] || modulesOf(P.course || "py")[0] || MODULES[0]).id;
     let i = 0;
     let flipped = false;
     let h = '<div class="wrap page"><h1 class="h1">Revisão</h1><p class="lead muted">Relembrar é o que faz o conteúdo ficar. Refaça o que você errou e passe pelos cartões.</p>';
@@ -1594,18 +1961,28 @@
         '<ul class="review-list">' +
         pending
           .slice(0, 12)
-          .map((f) => '<li><span class="kind kind-' + f.step.kind + '">' + KIND[f.step.kind] + "</span><span>" + esc(f.ref.module.title + " · " + f.ref.lesson.title) + "</span></li>")
+          .map(
+            (f) =>
+              '<li><span class="kind kind-' +
+              f.step.kind +
+              '">' +
+              KIND[f.step.kind] +
+              "</span><span>" +
+              esc((f.ref.module.course === "bd" ? "BD · " : "Python · ") + f.ref.module.title + " · " + f.ref.lesson.title) +
+              "</span></li>"
+          )
           .join("") +
         (pending.length > 12 ? '<li class="muted small">e mais ' + (pending.length - 12) + " (o treino pega 12 por vez)</li>" : "") +
         "</ul>";
     h += "</section>";
     h +=
       '<section class="cards-section"><div class="cards-head"><div><p class="eyebrow">Cartões de memória</p><h2 class="h2">Relembre os conceitos</h2></div><label class="field inline"><span>Módulo</span><select id="modSel">' +
-      MODULES.map((m, n) => '<option value="' + m.id + '"' + (m.id === mod ? " selected" : "") + ">" + pad2(n + 1) + " · " + esc(m.title) + "</option>").join("") +
+      moduleOptions(mod) +
       '</select></label></div><div id="flashHost"></div><div class="row center"><button class="btn ghost" id="prevCard">← Anterior</button><button class="btn" id="nextCard">Próximo →</button></div></section></div>';
     const main = shell("revisao", h);
     function renderCard() {
-      const m = MODULES.find((x) => x.id === mod);
+      const m = MODULE_BY_ID[mod];
+      CUR_LANG = m.course === "bd" ? "sql" : "py";
       const c = m.cards[i % m.cards.length];
       $("#flashHost", main).innerHTML =
         '<button class="flash acc-' +
@@ -1625,7 +2002,7 @@
       $("#flash", main).onclick = () => ((flipped = !flipped), renderCard());
     }
     function goCard(d) {
-      const m = MODULES.find((x) => x.id === mod);
+      const m = MODULE_BY_ID[mod];
       flipped = false;
       i = (i + d + m.cards.length) % m.cards.length;
       update((p) => p.stats.cards++);
@@ -1657,33 +2034,149 @@
       code: 'def barra(vida, maximo):\n    cheios = vida * 20 // maximo\n    return "[" + "#" * cheios + "-" * (20 - cheios) + "] " + str(vida) + "/" + str(maximo)\n\nfor vida in [100, 75, 40, 10, 0]:\n    print(barra(vida, 100))\n',
     },
   ];
+  const SQL_EXAMPLES = [
+    { name: "Todos os jogadores", code: "SELECT * FROM jogadores;\n" },
+    { name: "Ranking por pontos", code: "SELECT nick, classe, pontos\nFROM jogadores\nORDER BY pontos DESC\nLIMIT 5;\n" },
+    {
+      name: "Jogador e guilda (JOIN)",
+      code: "SELECT j.nick, g.nome AS guilda\nFROM jogadores j\nLEFT JOIN guildas g ON g.id = j.guilda_id\nORDER BY g.nome;\n",
+    },
+    { name: "Jogadores por classe (gráfico)", code: "SELECT classe, COUNT(*) AS total\nFROM jogadores\nGROUP BY classe\nORDER BY total DESC;\n" },
+    {
+      name: "Estatística das partidas",
+      code: "SELECT COUNT(*) AS partidas,\n       ROUND(AVG(abates), 2) AS media_abates,\n       MIN(abates) AS minimo,\n       MAX(abates) AS maximo\nFROM partidas;\n",
+    },
+    {
+      name: "Criar uma tabela nova",
+      code: "CREATE TABLE missoes (\n  id INTEGER PRIMARY KEY,\n  nome TEXT NOT NULL,\n  recompensa INTEGER CHECK (recompensa > 0)\n);\nINSERT INTO missoes (nome, recompensa) VALUES ('Caverna do Dragao', 500);\nSELECT * FROM missoes;\n",
+    },
+    { name: "Criar uma view", code: "CREATE VIEW ranking AS\nSELECT nick, pontos FROM jogadores ORDER BY pontos DESC;\n\nSELECT * FROM ranking LIMIT 3;\n" },
+  ];
+  let labTab = null;
+  let LAB_DB = null;
+  let labDirty = false;
   function viewLab() {
-    const h =
-      '<div class="wrap page"><div class="lab-head"><div><h1 class="h1">Laboratório</h1><p class="muted">Sem correção e sem nota. Teste ideias, refaça exemplos e invente programas. O código fica salvo e vai junto no relatório.</p></div>' +
-      '<label class="field inline"><span>Carregar exemplo</span><select id="exSel"><option value="">Escolha...</option>' +
-      EXAMPLES.map((x, i) => '<option value="' + i + '">' + esc(x.name) + "</option>").join("") +
-      '</select></label></div><div class="lab-grid"><div class="lab-col"><div id="labEd"></div><div class="row toolbar"><button class="btn run" id="labRun">▶ Rodar</button><span class="small muted">Atalho: Ctrl + Enter</span></div></div><div id="labCon"></div></div></div>';
+    if (!labTab) labTab = P.course === "bd" ? "sql" : "py";
+    const sql = labTab === "sql";
+    CUR_LANG = sql ? "sql" : "py";
+    const list = sql ? SQL_EXAMPLES : EXAMPLES;
+    let h =
+      '<div class="wrap page"><div class="lab-head"><div><h1 class="h1">Laboratório</h1><p class="muted">' +
+      (sql
+        ? "Sem correção e sem nota. Consulte, crie tabelas, insira, apague. O banco é seu: se estragar, é só resetar."
+        : "Sem correção e sem nota. Teste ideias, refaça exemplos e invente programas. O código fica salvo e vai junto no relatório.") +
+      '</p></div><div class="course-tabs small-tabs" role="tablist">' +
+      COURSES.map((c) => '<button class="course-tab' + ((c.lang === "sql") === sql ? " on" : "") + '" data-tab="' + c.lang + '" role="tab">' + (c.lang === "sql" ? "SQL" : "Python") + "</button>").join("") +
+      "</div></div>";
+    h +=
+      '<div class="row lab-tools"><label class="field inline"><span>Carregar exemplo</span><select id="exSel"><option value="">Escolha...</option>' +
+      list.map((x, i) => '<option value="' + i + '">' + esc(x.name) + "</option>").join("") +
+      "</select></label>";
+    if (sql)
+      h +=
+        '<span class="grow"></span><button class="btn ghost small" id="bkDown">Baixar backup</button><label class="btn ghost small filebtn">Restaurar backup<input type="file" id="bkUp" accept=".sql,text/plain,application/sql" hidden></label><span id="resetDbArea"></span>';
+    h += "</div>";
+    h +=
+      '<div class="lab-grid' +
+      (sql ? " lab-sql" : "") +
+      '"><div class="lab-col"><div id="labEd"></div><div class="row toolbar"><button class="btn run" id="labRun">▶ Rodar</button><span class="small muted">Atalho: Ctrl + Enter</span></div>' +
+      (sql ? '<details class="schema-box" open><summary>Tabelas do banco</summary><div id="labSchema" class="schema-slot"><span class="small muted">Carregando...</span></div></details>' : "") +
+      '</div><div id="labCon"></div></div>';
+    if (sql)
+      h +=
+        '<p class="small muted lab-note">O banco do laboratório fica na memória: ao recarregar a página ele volta ao original. Para guardar o que fez, use <b>Baixar backup</b> e depois <b>Restaurar backup</b>.</p>';
+    h += "</div>";
     const main = shell("lab", h);
+    $$("[data-tab]", main).forEach((b) => (b.onclick = () => ((labTab = b.dataset.tab), viewLab())));
+    const saved = sql ? P.labSql : P.lab;
     let t = null;
-    const ed = createEditor($("#labEd", main), P.lab != null ? P.lab : EXAMPLES[0].code, {
-      minLines: 16,
+    const ed = createEditor($("#labEd", main), saved != null ? saved : list[0].code, {
+      minLines: sql ? 12 : 16,
+      lang: CUR_LANG,
       onRun: run,
       onChange: (v) => {
         clearTimeout(t);
-        t = setTimeout(() => update((p) => (p.lab = v)), 1200);
+        t = setTimeout(() => update((p) => (sql ? (p.labSql = v) : (p.lab = v))), 1200);
       },
     });
-    const con = createConsole($("#labCon", main));
+    let con;
+    function refreshSchema() {
+      const s = $("#labSchema", main);
+      if (s && LAB_DB) s.innerHTML = schemaHtml(LAB_DB);
+    }
+    if (sql) {
+      con = createSqlConsole($("#labCon", main), {
+        getDb: () => LAB_DB,
+        chartButton: true,
+        onRan: (r) => {
+          if (r.items.some((it) => it.kind !== "SELECT" && it.kind !== "WITH" && it.kind !== "PRAGMA")) labDirty = true;
+          refreshSchema();
+        },
+      });
+      SQ.ensure().then((ok) => {
+        if (!ok) return;
+        if (!LAB_DB) LAB_DB = SQ.open(["arena"]);
+        refreshSchema();
+      });
+      const renderResetDb = (confirm) => {
+        const a = $("#resetDbArea", main);
+        a.innerHTML = confirm
+          ? '<span class="small muted">Voltar o banco ao original?</span> <button class="btn tiny danger" id="rdYes">Sim</button> <button class="btn tiny ghost" id="rdNo">Não</button>'
+          : '<button class="btn ghost small" id="rdAsk">Resetar banco</button>';
+        if (confirm) {
+          $("#rdYes", a).onclick = () => {
+            if (LAB_DB) LAB_DB.close();
+            LAB_DB = SQ.open(["arena"]);
+            labDirty = false;
+            refreshSchema();
+            con.clear();
+            toast("info", "Banco resetado", "As tabelas voltaram ao original.");
+            renderResetDb(false);
+          };
+          $("#rdNo", a).onclick = () => renderResetDb(false);
+        } else $("#rdAsk", a).onclick = () => renderResetDb(true);
+      };
+      renderResetDb(false);
+      $("#bkDown", main).onclick = async () => {
+        if (!(await SQ.ensure()) || !LAB_DB) return;
+        const d = new Date();
+        downloadFile("backup-arena-" + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + "-" + pad2(d.getHours()) + pad2(d.getMinutes()) + ".sql", SQ.dump(LAB_DB), "application/sql");
+        labDirty = false;
+        toast("info", "Backup baixado", "É um arquivo .sql com a estrutura e os dados. Abra num editor de texto para ver.");
+      };
+      $("#bkUp", main).onchange = (e) => {
+        const f = e.target.files[0];
+        e.target.value = "";
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = async () => {
+          if (!(await SQ.ensure())) return;
+          try {
+            const db = SQ.fromDump(String(r.result));
+            if (LAB_DB) LAB_DB.close();
+            LAB_DB = db;
+            labDirty = false;
+            refreshSchema();
+            con.clear();
+            toast("info", "Backup restaurado", "O banco agora está como no arquivo " + f.name + ".");
+          } catch (err) {
+            toast("error", "Não deu para restaurar", "O arquivo não é um backup SQL válido: " + (err.message || err));
+          }
+        };
+        r.readAsText(f);
+      };
+    } else con = createConsole($("#labCon", main));
     function run() {
       update((p) => {
         p.stats.runs++;
-        p.lab = ed.get();
+        if (sql) p.labSql = ed.get();
+        else p.lab = ed.get();
       });
       con.run(ed.get());
     }
     $("#labRun", main).onclick = run;
     $("#exSel", main).onchange = (e) => {
-      const ex = EXAMPLES[Number(e.target.value)];
+      const ex = list[Number(e.target.value)];
       if (ex) ed.set(ex.code);
       e.target.value = "";
     };
@@ -1692,49 +2185,59 @@
   /* ================= Tela: perfil e entrega ================= */
   function viewPerfil() {
     const lv = levelInfo(P.xp);
-    const done = Object.keys(P.lessons).length;
     const totalStars = Object.values(P.lessons).reduce((a, l) => a + l.stars, 0);
     let h = '<div class="wrap page">';
     h +=
       '<section class="panel profile-head"><div class="avatar big">' +
       esc(P.name.charAt(0).toUpperCase()) +
-      '</div><div><h1 class="h1">' +
+      '</div><div class="grow"><h1 class="h1">' +
       esc(P.name) +
       '</h1><p class="muted">Nível ' +
       lv.level +
       " · " +
       lv.title +
-      "</p></div></section>";
+      '</p></div><form class="turma-edit" id="turmaForm"><label class="field inline"><span>Turma</span><input id="turmaEdit" maxlength="30" list="turmaList2" value="' +
+      esc(P.turma || "") +
+      '" placeholder="ex.: 2º A"><datalist id="turmaList2">' +
+      knownTurmas()
+        .map((t) => '<option value="' + esc(t) + '">')
+        .join("") +
+      '</datalist></label><button class="btn ghost small">Salvar</button></form></section>';
     h +=
       '<section class="panel deliver-big"><div><p class="eyebrow">Entrega</p><h2 class="h2">Enviar para o professor</h2><p class="muted">O relatório é um arquivo com seu progresso, as respostas de cada exercício e os códigos que você escreveu. Baixe e envie do jeito que o professor pedir.</p></div><button class="btn primary lg" id="reportBig">Baixar relatório</button></section>';
     h += '<section class="statgrid">';
     [
       [P.xp, "XP total"],
-      [done + "/" + TOTAL_LESSONS, "lições concluídas"],
+      ...COURSES.map((c) => [courseDone(P, c.id) + "/" + lessonsOf(c.id).length, "lições de " + c.short]),
       [totalStars, "estrelas"],
-      [currentStreak(P), "dias seguidos (recorde " + P.streak.best + ")"],
-      [P.stats.runs, "programas rodados"],
+      [P.stats.runs, "programas e consultas rodados"],
       [P.stats.codeClean, "códigos certos de primeira"],
     ].forEach((s) => (h += '<div class="stat"><b>' + s[0] + "</b><span>" + esc(s[1]) + "</span></div>"));
-    h += '</section><h2 class="h2 section">Módulos</h2><div class="modbars">';
-    MODULES.forEach((m, i) => {
-      const d = m.lessons.filter((l) => P.lessons[l.id]).length;
-      h +=
-        '<div class="modbar acc-' +
-        m.accent +
-        '"><span class="mono small">' +
-        pad2(i + 1) +
-        '</span><span class="modbar-name">' +
-        esc(m.title) +
-        '</span><span class="bar"><i style="width:' +
-        (d / m.lessons.length) * 100 +
-        '%"></i></span><span class="mono small muted">' +
-        d +
-        "/" +
-        m.lessons.length +
-        "</span></div>";
+    h += "</section>";
+    COURSES.forEach((c) => {
+      const mods = modulesOf(c.id);
+      const any = mods.some((m) => m.lessons.some((l) => P.lessons[l.id]));
+      h += '<h2 class="h2 section">' + esc(c.name) + (any ? "" : ' <span class="muted small">ainda não começou</span>') + '</h2><div class="modbars">';
+      mods.forEach((m, i) => {
+        const d = m.lessons.filter((l) => P.lessons[l.id]).length;
+        h +=
+          '<div class="modbar acc-' +
+          m.accent +
+          '"><span class="mono small">' +
+          pad2(i + 1) +
+          '</span><span class="modbar-name">' +
+          esc(m.title) +
+          '</span><span class="bar"><i style="width:' +
+          (d / m.lessons.length) * 100 +
+          '%"></i></span><span class="mono small muted">' +
+          d +
+          "/" +
+          m.lessons.length +
+          "</span></div>";
+      });
+      h += "</div>";
     });
-    h += '</div><h2 class="h2 section">Conquistas <span class="muted mono small">' + P.badges.length + "/" + BADGES.length + '</span></h2><div class="badges">';
+    h += '<h2 class="h2 section">Conquistas <span class="muted mono small">' + P.badges.length + "/" + BADGES.length + '</span></h2><div class="badges">';
     BADGES.forEach((b) => {
       h +=
         '<div class="badge' +
@@ -1751,6 +2254,14 @@
       '<button class="btn ghost" id="switchBtn">Trocar de aluno</button></div>' +
       '<div class="panel form"><h2 class="h3">Recomeçar do zero</h2><p class="small muted">Apaga XP, lições, conquistas e códigos deste aluno neste computador. Não dá para desfazer.</p><div id="resetArea"></div></div></div></div>';
     const main = shell("perfil", h);
+    $("#turmaForm", main).onsubmit = (e) => {
+      e.preventDefault();
+      const v = $("#turmaEdit", main).value.trim().slice(0, 30);
+      if (!v) return toast("error", "Informe a turma");
+      update((p) => (p.turma = v));
+      renderHud();
+      toast("info", "Turma salva", v);
+    };
     $("#reportBig", main).onclick = downloadReport;
     $("#importFile2", main).onchange = (e) => importFile(e.target.files[0], false);
     $("#switchBtn", main).onclick = logout;
@@ -1762,7 +2273,8 @@
       if (confirm) {
         $("#rYes", a).onclick = () => {
           const name = P.name;
-          update((p) => Object.assign(p, emptyProgress(name)));
+          const turma = P.turma;
+          update((p) => Object.assign(p, emptyProgress(name), { turma }));
           toast("info", "Progresso apagado");
           viewPerfil();
         };
@@ -1801,12 +2313,12 @@
     });
     let h = '<div class="rep">';
     h += '<div class="rep-head"><div><div class="rep-eyebrow">Relatório de progresso · ' + SITE + "</div><h1>" + esc(p.name) + "</h1>";
-    h += '<div class="rep-sub">Gerado em ' + fmtDate(p.exportedAt || Date.now()) + " · Última atividade " + fmtDate(p.updated) + "</div></div></div>";
+    h += '<div class="rep-sub">' + (p.turma ? "Turma " + esc(p.turma) + " · " : "") + "Gerado em " + fmtDate(p.exportedAt || Date.now()) + " · Última atividade " + fmtDate(p.updated) + "</div></div></div>";
     h += '<div class="rep-stats">';
     [
       [p.xp || 0, "XP"],
       ["Nv " + lv.level, lv.title],
-      [done + "/" + TOTAL_LESSONS, "lições"],
+      ...COURSES.map((c) => [courseDone(p, c.id) + "/" + lessonsOf(c.id).length, "lições de " + c.short]),
       [answered, "exercícios respondidos"],
       [firstTry, "acertos de primeira"],
       [codeOk + "/" + codeTotal, "códigos aprovados"],
@@ -1814,7 +2326,10 @@
       [helpTotals(p).pastes, "tentativas de colar"],
     ].forEach((s) => (h += "<div><b>" + esc(s[0]) + "</b><span>" + esc(s[1]) + "</span></div>"));
     h += "</div>";
-    MODULES.forEach((m, mi) => {
+    COURSES.forEach((c) => {
+    const withAny = modulesOf(c.id).filter((m) => m.lessons.some((l) => (p.lessons || {})[l.id] || l.steps.some((_, i) => ans[stepKey(l.id, i)])));
+    if (withAny.length) h += '<div class="rep-course">' + esc(c.name) + "</div>";
+    modulesOf(c.id).forEach((m, mi) => {
       const lessonsWith = m.lessons.filter((l) => (p.lessons || {})[l.id] || l.steps.some((_, i) => ans[stepKey(l.id, i)]));
       if (!lessonsWith.length) return;
       h += '<section class="rep-mod"><h2>' + pad2(mi + 1) + " · " + esc(m.title) + "</h2>";
@@ -1855,11 +2370,13 @@
       });
       h += "</section>";
     });
-    if (p.lab) h += '<section class="rep-mod"><h2>Laboratório</h2><pre class="rep-code">' + esc(p.lab) + "</pre></section>";
+    });
+    if (p.lab) h += '<section class="rep-mod"><h2>Laboratório · Python</h2><pre class="rep-code">' + esc(p.lab) + "</pre></section>";
+    if (p.labSql) h += '<section class="rep-mod"><h2>Laboratório · SQL</h2><pre class="rep-code">' + esc(p.labSql) + "</pre></section>";
     return h + "</div>";
   }
   const REPORT_CSS =
-    ".rep{font-family:system-ui,'Segoe UI',sans-serif;color:#e4ecf8;max-width:960px;margin:0 auto;padding:24px 16px}.rep h1{font-size:30px;margin:4px 0}.rep-eyebrow{font:600 12px monospace;letter-spacing:.1em;text-transform:uppercase;color:#2de2e6}.rep-sub{color:#8394b4;font-size:14px}.rep-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin:18px 0}.rep-stats div{border:1px solid #27395c;border-radius:10px;padding:10px;background:#0b1120;display:flex;flex-direction:column}.rep-stats b{font-size:22px;color:#2de2e6}.rep-stats span{font-size:13px;color:#8394b4}.rep-mod{margin-top:22px}.rep-mod h2{font-size:20px;border-bottom:1px solid #27395c;padding-bottom:6px}.rep-lesson{margin:12px 0 0 0;padding:12px;border:1px solid #1b2840;border-radius:10px;background:#0b1120}.rep-lesson h3{font-size:16px;margin:0 0 8px}.rep-item{padding:8px 0;border-top:1px dashed #1b2840}.rep-q{font-size:14px}.rep-kind{font:12px monospace;color:#8394b4;border:1px solid #27395c;border-radius:5px;padding:0 6px}.rep-tag{font:600 12px monospace;border-radius:5px;padding:1px 7px;margin-left:4px;white-space:nowrap}.rep-tag.ok{background:rgba(63,240,164,.15);color:#3ff0a4}.rep-tag.mid{background:rgba(255,209,102,.15);color:#ffd166}.rep-tag.bad{background:rgba(255,85,119,.15);color:#ff5577}.rep-tag.pend{background:rgba(131,148,180,.15);color:#8394b4}.rep-ans{font:13px monospace;color:#a8f07a;margin-top:4px}.rep-wrong{font:12px monospace;color:#ff8fa6;margin-top:2px}.rep-help{font:12px monospace;color:#8394b4;margin-top:4px}.rep-code{font:13px/1.5 'JetBrains Mono',Consolas,monospace;background:#060a14;border:1px solid #27395c;border-radius:8px;padding:10px;margin:6px 0 0;overflow-x:auto;white-space:pre;color:#e4ecf8}";
+    ".rep{font-family:system-ui,'Segoe UI',sans-serif;color:#e4ecf8;max-width:960px;margin:0 auto;padding:24px 16px}.rep h1{font-size:30px;margin:4px 0}.rep-eyebrow{font:600 12px monospace;letter-spacing:.1em;text-transform:uppercase;color:#2de2e6}.rep-sub{color:#8394b4;font-size:14px}.rep-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin:18px 0}.rep-stats div{border:1px solid #27395c;border-radius:10px;padding:10px;background:#0b1120;display:flex;flex-direction:column}.rep-stats b{font-size:22px;color:#2de2e6}.rep-stats span{font-size:13px;color:#8394b4}.rep-course{margin-top:28px;font:700 13px monospace;letter-spacing:.12em;text-transform:uppercase;color:#2de2e6}.rep-mod{margin-top:22px}.rep-mod h2{font-size:20px;border-bottom:1px solid #27395c;padding-bottom:6px}.rep-lesson{margin:12px 0 0 0;padding:12px;border:1px solid #1b2840;border-radius:10px;background:#0b1120}.rep-lesson h3{font-size:16px;margin:0 0 8px}.rep-item{padding:8px 0;border-top:1px dashed #1b2840}.rep-q{font-size:14px}.rep-kind{font:12px monospace;color:#8394b4;border:1px solid #27395c;border-radius:5px;padding:0 6px}.rep-tag{font:600 12px monospace;border-radius:5px;padding:1px 7px;margin-left:4px;white-space:nowrap}.rep-tag.ok{background:rgba(63,240,164,.15);color:#3ff0a4}.rep-tag.mid{background:rgba(255,209,102,.15);color:#ffd166}.rep-tag.bad{background:rgba(255,85,119,.15);color:#ff5577}.rep-tag.pend{background:rgba(131,148,180,.15);color:#8394b4}.rep-ans{font:13px monospace;color:#a8f07a;margin-top:4px}.rep-wrong{font:12px monospace;color:#ff8fa6;margin-top:2px}.rep-help{font:12px monospace;color:#8394b4;margin-top:4px}.rep-code{font:13px/1.5 'JetBrains Mono',Consolas,monospace;background:#060a14;border:1px solid #27395c;border-radius:8px;padding:10px;margin:6px 0 0;overflow-x:auto;white-space:pre;color:#e4ecf8}";
 
   function buildReportFile(p) {
     const data = JSON.stringify(Object.assign({}, p, { exportedAt: Date.now() })).replace(/</g, "\\u003c");
@@ -1921,19 +2438,155 @@
 
   /* ================= Tela: professor ================= */
   let TEACHER = [];
+  let TFILTER = "";
+  const FG = { course: "py", mods: [], turma: "", strict: true };
+  function focusGenHtml() {
+    let h =
+      '<section class="panel focus-gen"><div class="focus-gen-head"><div><p class="eyebrow">Foco da aula</p><h2 class="h2">Gerar link para a turma</h2><p class="muted small">Escolha de 1 a 3 módulos e passe o link para os alunos (no quadro ou no grupo da turma). Quem abrir pelo link vê esses módulos em destaque e a turma já vem preenchida. Vale só no dia de hoje.</p></div></div>';
+    h +=
+      '<div class="row wrap-row"><label class="field inline"><span>Disciplina</span><select id="fgCourse">' +
+      COURSES.map((c) => '<option value="' + c.id + '"' + (c.id === FG.course ? " selected" : "") + ">" + esc(c.name) + "</option>").join("") +
+      '</select></label><label class="field inline"><span>Turma</span><input id="fgTurma" maxlength="30" placeholder="ex.: 2º A" value="' +
+      esc(FG.turma) +
+      '"></label></div>';
+    h += '<div class="fg-mods">';
+    modulesOf(FG.course).forEach((m, i) => {
+      const on = FG.mods.includes(m.id);
+      h +=
+        '<label class="fg-mod acc-' +
+        m.accent +
+        (on ? " on" : "") +
+        '"><input type="checkbox" value="' +
+        m.id +
+        '"' +
+        (on ? " checked" : "") +
+        (!on && FG.mods.length >= 3 ? " disabled" : "") +
+        '><span class="mono small">' +
+        pad2(i + 1) +
+        "</span><span>" +
+        esc(m.title) +
+        '</span><span class="muted small">' +
+        m.lessons.length +
+        (m.lessons.length === 1 ? " lição" : " lições") +
+        "</span></label>";
+    });
+    h += "</div>";
+    h +=
+      '<label class="check"><input type="checkbox" id="fgStrict"' +
+      (FG.strict ? " checked" : "") +
+      '> <span>Mostrar só esses módulos (esconde o resto da trilha hoje)</span></label>';
+    h += '<div class="fg-out" id="fgOut"></div>';
+    if (focusMods())
+      h +=
+        '<p class="small muted fg-active">Este navegador está com foco ativo hoje: ' +
+        esc(focusMods().map((id) => MODULE_BY_ID[id].title).join(", ")) +
+        '. <button class="btn tiny ghost" id="fgClear">Remover foco deste navegador</button></p>';
+    return h + "</section>";
+  }
+  function focusLink() {
+    if (!FG.mods.length) return "";
+    const q = new URLSearchParams();
+    q.set("foco", FG.mods.join(","));
+    if (FG.turma.trim()) q.set("turma", FG.turma.trim());
+    if (FG.strict) q.set("so", "1");
+    return location.origin + location.pathname + "?" + q.toString();
+  }
+  function bindFocusGen() {
+    const out = $("#fgOut");
+    function renderOut() {
+      const link = focusLink();
+      if (!link) {
+        out.innerHTML = '<p class="small muted">Marque pelo menos um módulo para gerar o link.</p>';
+        return;
+      }
+      out.innerHTML =
+        '<div class="row fg-link"><input readonly id="fgLink" value="' +
+        esc(link) +
+        '" aria-label="Link do foco da aula"><button class="btn primary" id="fgCopy">Copiar link</button><a class="btn ghost" href="' +
+        esc(link) +
+        '" target="_blank" rel="noopener">Testar</a></div>' +
+        (location.protocol === "file:" ? '<p class="form-error">Você abriu o site direto do arquivo. O link só funciona para os alunos com o site publicado (no Vercel).</p>' : "");
+      $("#fgCopy").onclick = async () => {
+        const inp = $("#fgLink");
+        try {
+          await navigator.clipboard.writeText(link);
+        } catch (e) {
+          inp.select();
+          try {
+            document.execCommand("copy");
+          } catch (e2) {}
+        }
+        toast("info", "Link copiado", "Cole no quadro ou no grupo da turma.");
+      };
+      $("#fgLink").onclick = (e) => e.target.select();
+    }
+    if ($("#fgClear"))
+      $("#fgClear").onclick = () => {
+        FOCUS = null;
+        try {
+          localStorage.removeItem(FOCUS_KEY);
+        } catch (e) {}
+        toast("info", "Foco removido", "Este navegador volta a mostrar a trilha completa.");
+        viewProfessor();
+      };
+    $("#fgCourse").onchange = (e) => {
+      FG.course = e.target.value;
+      FG.mods = [];
+      viewProfessor();
+    };
+    $("#fgTurma").oninput = (e) => {
+      FG.turma = e.target.value;
+      renderOut();
+    };
+    $("#fgStrict").onchange = (e) => {
+      FG.strict = e.target.checked;
+      renderOut();
+    };
+    $$(".fg-mod input").forEach(
+      (c) =>
+        (c.onchange = () => {
+          if (c.checked) {
+            if (!FG.mods.includes(c.value)) FG.mods.push(c.value);
+          } else FG.mods = FG.mods.filter((x) => x !== c.value);
+          const order = modulesOf(FG.course).map((m) => m.id);
+          FG.mods.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+          $$(".fg-mod").forEach((l) => {
+            const inp = $("input", l);
+            l.classList.toggle("on", inp.checked);
+            inp.disabled = !inp.checked && FG.mods.length >= 3;
+          });
+          renderOut();
+        })
+    );
+    renderOut();
+  }
   function viewProfessor() {
+    const turmas = Array.from(new Set(TEACHER.map((p) => (p.turma || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    if (TFILTER && !turmas.includes(TFILTER) && TFILTER !== "-") TFILTER = "";
+    const shown = TEACHER.filter((p) => !TFILTER || (TFILTER === "-" ? !(p.turma || "").trim() : (p.turma || "").trim() === TFILTER));
     app().innerHTML =
       '<div class="wrap page"><div class="lab-head"><a href="#/" class="brand"><span class="brand-mark">&gt;_</span><span class="brand-name">' +
       SITE +
       '</span></a><span class="eyebrow">Área do professor</span></div>' +
-      '<section class="panel dropzone" id="drop"><h1 class="h2">Relatórios dos alunos</h1><p class="muted">Selecione ou arraste aqui os arquivos de relatório que os alunos enviaram (pode ser vários de uma vez). Nada é enviado para a internet: tudo é lido aqui no seu navegador.</p>' +
-      '<div class="row"><label class="btn primary filebtn">Abrir relatórios<input type="file" id="tFiles" multiple accept=".html,.json,text/html,application/json" hidden></label>' +
+      focusGenHtml() +
+      '<section class="panel dropzone" id="drop"><h2 class="h2">Relatórios dos alunos</h2><p class="muted">Selecione ou arraste aqui os arquivos de relatório que os alunos enviaram (pode ser vários de uma vez). Nada é enviado para a internet: tudo é lido aqui no seu navegador.</p>' +
+      '<div class="row wrap-row"><label class="btn primary filebtn">Abrir relatórios<input type="file" id="tFiles" multiple accept=".html,.json,text/html,application/json" hidden></label>' +
       '<button class="btn ghost" id="tCsv"' +
-      (TEACHER.length ? "" : " disabled") +
+      (shown.length ? "" : " disabled") +
       '>Baixar planilha (CSV)</button><button class="btn ghost" id="tClear"' +
       (TEACHER.length ? "" : " disabled") +
-      ">Limpar lista</button></div><p class=\"form-error\" id=\"tErr\" hidden></p></section>" +
+      ">Limpar lista</button>" +
+      (TEACHER.length
+        ? '<span class="grow"></span><label class="field inline"><span>Turma</span><select id="tFilter"><option value="">Todas (' +
+          TEACHER.length +
+          ")</option>" +
+          turmas.map((t) => '<option value="' + esc(t) + '"' + (t === TFILTER ? " selected" : "") + ">" + esc(t) + " (" + TEACHER.filter((p) => (p.turma || "").trim() === t).length + ")</option>").join("") +
+          (TEACHER.some((p) => !(p.turma || "").trim()) ? '<option value="-"' + (TFILTER === "-" ? " selected" : "") + ">Sem turma</option>" : "") +
+          "</select></label>"
+        : "") +
+      '</div><p class="form-error" id="tErr" hidden></p></section>' +
       '<div id="tTable"></div><div id="tDetail"></div></div>';
+    bindFocusGen();
     const add = (files) => {
       const errs = [];
       let pending = files.length;
@@ -1942,7 +2595,7 @@
         r.onload = () => {
           try {
             const p = parseReport(String(r.result));
-            const i = TEACHER.findIndex((x) => x.name.toLowerCase() === p.name.toLowerCase());
+            const i = TEACHER.findIndex((x) => x.name.toLowerCase() === p.name.toLowerCase() && (x.turma || "") === (p.turma || ""));
             if (i >= 0) {
               if ((p.updated || 0) >= (TEACHER[i].updated || 0)) TEACHER[i] = p;
             } else TEACHER.push(p);
@@ -1950,7 +2603,7 @@
             errs.push(f.name);
           }
           if (--pending === 0) {
-            TEACHER.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+            TEACHER.sort((a, b) => (a.turma || "").localeCompare(b.turma || "", "pt-BR") || a.name.localeCompare(b.name, "pt-BR"));
             viewProfessor();
             if (errs.length) {
               $("#tErr").hidden = false;
@@ -1973,29 +2626,54 @@
       drop.classList.remove("over");
       if (e.dataTransfer.files.length) add(e.dataTransfer.files);
     });
-    $("#tClear").onclick = () => ((TEACHER = []), viewProfessor());
+    $("#tClear").onclick = () => ((TEACHER = []), (TFILTER = ""), viewProfessor());
+    if ($("#tFilter")) $("#tFilter").onchange = (e) => ((TFILTER = e.target.value), viewProfessor());
     $("#tCsv").onclick = () => {
-      const rows = [["Aluno", "XP", "Nivel", "Licoes concluidas", "Estrelas", "Exercicios respondidos", "Acertos de primeira", "Codigos aprovados", "Ajudas", "Tentativas de colar", "Ultima atividade"]];
-      TEACHER.forEach((p) => {
+      const rows = [
+        ["Aluno", "Turma", "XP", "Nivel", "Licoes Python", "Licoes Banco de Dados", "Estrelas", "Exercicios respondidos", "Acertos de primeira", "Codigos aprovados", "Ajudas", "Tentativas de colar", "Ultima atividade"],
+      ];
+      shown.forEach((p) => {
         const s = summary(p);
-        rows.push([p.name, p.xp, levelInfo(p.xp).level, s.done, s.stars, s.answered, s.firstTry, s.codeOk + "/" + s.codeTotal, helpTotals(p).helps, helpTotals(p).pastes, fmtDate(p.updated)]);
+        rows.push([
+          p.name,
+          p.turma || "",
+          p.xp,
+          levelInfo(p.xp).level,
+          courseDone(p, "py") + "/" + lessonsOf("py").length,
+          courseDone(p, "bd") + "/" + lessonsOf("bd").length,
+          s.stars,
+          s.answered,
+          s.firstTry,
+          s.codeOk + "/" + s.codeTotal,
+          helpTotals(p).helps,
+          helpTotals(p).pastes,
+          fmtDate(p.updated),
+        ]);
       });
-      downloadFile("turma-" + today() + ".csv", "﻿" + rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(";")).join("\n"), "text/csv;charset=utf-8");
+      const tag = TFILTER && TFILTER !== "-" ? slug(TFILTER) + "-" : "";
+      downloadFile("turma-" + tag + today() + ".csv", "﻿" + rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(";")).join("\n"), "text/csv;charset=utf-8");
     };
     if (!TEACHER.length) return;
     let t =
-      '<div class="tablewrap"><table class="table admin"><thead><tr><th>Aluno</th><th>XP</th><th>Lições</th><th>Estrelas</th><th>Acertos de primeira</th><th>Códigos aprovados</th><th>Ajudas</th><th>Tentou colar</th><th>Última atividade</th><th></th></tr></thead><tbody>';
-    TEACHER.forEach((p, i) => {
+      '<div class="tablewrap"><table class="table admin"><thead><tr><th>Aluno</th><th>Turma</th><th>XP</th><th>Python</th><th>Banco de Dados</th><th>Estrelas</th><th>Acertos de primeira</th><th>Códigos aprovados</th><th>Ajudas</th><th>Tentou colar</th><th>Última atividade</th><th></th></tr></thead><tbody>';
+    shown.forEach((p) => {
+      const i = TEACHER.indexOf(p);
       const s = summary(p);
       t +=
         "<tr><td>" +
         esc(p.name) +
+        "</td><td>" +
+        esc(p.turma || "-") +
         '</td><td class="mono">' +
         p.xp +
         '</td><td class="mono">' +
-        s.done +
+        courseDone(p, "py") +
         "/" +
-        TOTAL_LESSONS +
+        lessonsOf("py").length +
+        '</td><td class="mono">' +
+        courseDone(p, "bd") +
+        "/" +
+        lessonsOf("bd").length +
         '</td><td class="mono">' +
         s.stars +
         '</td><td class="mono">' +
@@ -2018,6 +2696,7 @@
         i +
         '">Ver respostas</button></td></tr>';
     });
+    if (!shown.length) t += '<tr><td colspan="12" class="muted">Nenhum relatório desta turma.</td></tr>';
     $("#tTable").innerHTML = t + "</tbody></table></div>";
     $$("[data-d]").forEach(
       (b) =>
@@ -2063,6 +2742,7 @@
   }
   function route() {
     PY.stop();
+    loadFocus();
     const parts = location.hash.replace(/^#\/?/, "").split("/");
     const page = parts[0];
     if (page === "professor") return viewProfessor();
@@ -2075,6 +2755,9 @@
   }
 
   loadDB();
+  readFocusFromUrl();
+  loadFocus();
+  if (P && FOCUS && FOCUS.turma && !P.turma) update((p) => (p.turma = FOCUS.turma));
   window.addEventListener("hashchange", route);
   route();
   // carrega o Python em segundo plano

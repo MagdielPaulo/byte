@@ -141,8 +141,8 @@ img { max-width: 100%; }
 .nav a.on { color: var(--cyan); background: rgba(45, 226, 230, 0.08); }
 .nav-badge { font-family: var(--f-mono); font-size: 11px; background: var(--pink); color: #20030f; border-radius: 99px; padding: 0 6px; font-weight: 600; }
 .hud { display: flex; align-items: center; gap: 14px; margin-left: auto; }
-.hud-streak { display: inline-flex; gap: 4px; align-items: center; font-family: var(--f-mono); font-size: 14px; color: var(--dim); }
-.hud-streak.on { color: var(--amber); }
+.hud-turma { font-family: var(--f-mono); font-size: 13px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+@media (max-width: 560px) { .hud-turma { display: none; } }
 .flame { fill: currentColor; }
 .flame.on { filter: drop-shadow(0 0 4px rgba(255, 209, 102, 0.7)); }
 .hud-level { display: flex; align-items: center; gap: 8px; }
@@ -542,3 +542,97 @@ a.lesson-link:hover { background: var(--panel-2); border-color: var(--line-2); }
 .nopaste-note { font-size: 13px; color: var(--dim); margin-top: -4px; transition: color 0.2s; }
 .nopaste-note.nopaste-on { color: var(--amber); }
 .warn-cell { color: var(--amber) !important; }
+
+/* ---------- Disciplinas (abas) ---------- */
+.course-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.course-tab { font: inherit; color: var(--muted); background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 10px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 0; cursor: pointer; min-width: 170px; transition: border-color .15s, color .15s, box-shadow .15s; }
+.course-tab b { font-family: var(--f-display); font-size: 17px; color: var(--text); }
+.course-tab span { font-family: var(--f-mono); font-size: 12px; }
+.course-tab:hover:not(:disabled) { border-color: var(--cyan); }
+.course-tab.on { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan) inset, 0 0 24px rgba(45, 226, 230, .12); color: var(--cyan); }
+.course-tab:disabled { opacity: .4; cursor: not-allowed; }
+.course-tab:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.small-tabs { margin: 0; }
+.small-tabs .course-tab { min-width: 0; padding: 7px 16px; font-family: var(--f-display); font-size: 15px; font-weight: 700; color: var(--text); }
+.small-tabs .course-tab.on { color: var(--cyan); }
+.acc-text { color: var(--acc); }
+
+/* ---------- Foco da aula ---------- */
+.focus-box { margin-top: 24px; border: 1px solid var(--cyan); border-radius: var(--radius); padding: 16px; background: linear-gradient(180deg, rgba(45, 226, 230, .06), transparent 60%); }
+.focus-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; margin-bottom: 12px; }
+.focus-box .path { margin-top: 0; }
+details.others { margin-top: 20px; border: 1px solid var(--line); border-radius: var(--radius); padding: 0 16px; background: var(--bg-2); }
+details.others > summary { cursor: pointer; padding: 14px 0; color: var(--muted); font-weight: 500; }
+details.others[open] { padding-bottom: 16px; }
+details.others > summary:hover { color: var(--text); }
+
+/* ---------- Gerador de foco (professor) ---------- */
+.focus-gen { margin-top: 16px; display: flex; flex-direction: column; gap: 14px; }
+.focus-gen .h2 { margin: 2px 0 4px; }
+.fg-mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.fg-mod { display: grid; grid-template-columns: auto auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--code-bg); cursor: pointer; }
+.fg-mod input { grid-row: span 2; accent-color: var(--acc); width: 18px; height: 18px; }
+.fg-mod .mono { grid-row: span 2; color: var(--acc); }
+.fg-mod.on { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc) inset; }
+.fg-mod:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+.check { display: flex; gap: 10px; align-items: center; font-size: 15px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--cyan); }
+.fg-link { flex-wrap: wrap; }
+.fg-link input { flex: 1; min-width: 220px; font-family: var(--f-mono); font-size: 13px; color: var(--cyan); background: var(--code-bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 9px 12px; }
+.fg-active { border-top: 1px dashed var(--line-2); padding-top: 10px; margin: 0; }
+.wrap-row { flex-wrap: wrap; }
+
+/* ---------- SQL: resultados, tabelas e gráficos ---------- */
+.sql-out { white-space: normal; display: flex; flex-direction: column; gap: 12px; }
+.sql-block { display: flex; flex-direction: column; gap: 6px; }
+.sql-stmt { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sql-ok { color: var(--green); }
+.sqltable { overflow: auto; max-height: 320px; border: 1px solid var(--line-2); border-radius: 8px; }
+.sqltable table { border-collapse: collapse; width: max-content; min-width: 100%; font-family: var(--f-mono); font-size: 13px; }
+.sqltable th { position: sticky; top: 0; background: var(--panel-3); color: var(--cyan); text-align: left; font-weight: 600; padding: 6px 12px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.sqltable td { padding: 5px 12px; border-bottom: 1px solid var(--line); color: var(--text); white-space: nowrap; }
+.sqltable tr:nth-child(even) td { background: rgba(255, 255, 255, .02); }
+.sqltable td.num { text-align: right; color: var(--amber); }
+.sqltable td.null { color: var(--dim); font-style: italic; }
+.sqlcount { font-family: var(--f-mono); font-size: 12px; color: var(--dim); }
+.example .sqltable, .example .sqlcount, .example .sqlchart { margin: 8px 16px 0; }
+.example .codeview-label + .expected-slot { padding-top: 2px; }
+.expected-slot .codeview-label { padding-left: 16px; }
+.sqldiff > div { padding-bottom: 8px; }
+.sqldiff .sqltable, .sqldiff .sqlcount { margin: 4px 10px 0; }
+.sqlchart { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg-2); }
+.bar-row { display: grid; grid-template-columns: minmax(70px, 30%) 1fr auto; gap: 10px; align-items: center; font-family: var(--f-mono); font-size: 12px; }
+.bar-label { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.bar-track { height: 14px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.bar-track i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--violet)); border-radius: 3px; box-shadow: 0 0 10px rgba(45, 226, 230, .35); }
+.bar-val { color: var(--text); min-width: 3ch; text-align: right; }
+.bar-axis { font-family: var(--f-mono); font-size: 11px; color: var(--dim); text-align: center; }
+.chart-btn { align-self: flex-start; }
+
+/* ---------- Esquema do banco ---------- */
+.schema-box { border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-2); }
+.schema-box > summary { cursor: pointer; padding: 10px 14px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.schema-box > summary:hover { color: var(--text); }
+.schema-slot { padding: 0 14px 12px; }
+.schema { display: flex; flex-direction: column; gap: 4px; }
+.schema-t > summary { cursor: pointer; font-family: var(--f-mono); font-size: 13px; color: var(--cyan); padding: 3px 0; }
+.schema-t ul { margin: 2px 0 6px; padding-left: 22px; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.7; }
+.schema-t li b { color: var(--amber); font-weight: 600; }
+.schema-kind { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 5px; margin-right: 4px; }
+
+/* ---------- Laboratório SQL ---------- */
+.lab-tools { margin: 14px 0; flex-wrap: wrap; }
+.lab-grid.lab-sql .lab-col { display: flex; flex-direction: column; gap: 10px; }
+.lab-grid.lab-sql .lab-col .toolbar { margin: 0; }
+.lab-note { margin-top: 12px; }
+.lab-sql .console { max-height: 75vh; }
+
+/* ---------- Perfil: turma ---------- */
+.turma-edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.turma-edit input { width: 130px; }
+@media (max-width: 620px) { .profile-head { flex-wrap: wrap; } }
+.lab-head > .course-tabs { flex-direction: row; gap: 8px; }
+.console.sqlconsole { max-height: none; }
+.sqlconsole .console-out { max-height: 640px; }
+.turma-ask { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed var(--amber); border-radius: 10px; color: var(--amber); font-size: 15px; }
+.turma-ask input { flex: 1; min-width: 120px; padding: 7px 10px; background: var(--code-bg); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font: inherit; }
