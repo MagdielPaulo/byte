@@ -915,7 +915,6 @@
       '<label class="btn ghost block filebtn">Continuar de um arquivo de progresso<input type="file" id="importFile" accept=".html,.json,text/html,application/json" hidden></label>' +
       '<p class="small muted center-text">Trocou de computador? Carregue o relatório que você baixou antes.</p>' +
       "</div>" +
-      '<a href="#/professor" class="small muted">Área do professor</a>' +
       (storageOk ? "" : '<p class="form-error">Este navegador está bloqueando o salvamento. Use o botão de baixar relatório no fim da aula.</p>') +
       "</div>";
     $("#nameForm").onsubmit = (e) => {
@@ -2757,6 +2756,7 @@
   }
   async function loadTurmas() {
     TLOADING = true;
+    if (!TTURMAS && location.hash.indexOf("#/professor") === 0) app().innerHTML = professorLock();
     try {
       TTURMAS = (await profApi("")).turmas;
     } catch (e) {
@@ -2848,8 +2848,44 @@
     $$("[data-turma]").forEach((b) => (b.onclick = () => loadTurmaOnline(TTURMAS[Number(b.dataset.turma)])));
     if (TPASS && CLOUD.professor && !TTURMAS && !TLOADING) loadTurmas();
   }
+  /** Com o banco ligado, a área do professor inteira fica atrás da senha */
+  function professorLock() {
+    const head =
+      '<div class="auth"><span class="brand auth-brand"><span class="brand-mark">&gt;_</span><span class="brand-name">' + SITE + '</span></span><div class="panel auth-card"><p class="eyebrow">Área do professor</p>';
+    const foot = '</div><a href="#/" class="small muted">Voltar ao site</a></div>';
+    if (!CLOUD.checked || (TPASS && TLOADING)) return head + '<p class="muted">Carregando...</p>' + foot;
+    if (!CLOUD.professor)
+      return (
+        head +
+        '<h1 class="h2">Falta criar a senha</h1><p class="muted small">Na Vercel, em Settings → Environment Variables, crie <code class="ic">PROFESSOR_SENHA</code> e faça o Redeploy. Até lá, esta área fica fechada.</p>' +
+        foot
+      );
+    return (
+      head +
+      '<h1 class="h2">Entrar</h1><form class="form" id="lockForm"><label class="field"><span>Senha do professor</span><input type="password" id="lockIn" autocomplete="current-password" required></label><button class="btn primary lg block">Entrar</button></form>' +
+      foot
+    );
+  }
   function viewProfessor() {
-    if (!CLOUD.checked) cloudCheck();
+    if (!CLOUD.checked) cloudCheck().then(() => location.hash.indexOf("#/professor") === 0 && viewProfessor());
+    const locked = !CLOUD.checked || (CLOUD.online && (!CLOUD.professor || !TTURMAS));
+    if (locked) {
+      app().innerHTML = professorLock();
+      if (CLOUD.online && CLOUD.professor && TPASS && !TLOADING) loadTurmas();
+      const f = $("#lockForm");
+      if (f) {
+        f.onsubmit = (e) => {
+          e.preventDefault();
+          TPASS = $("#lockIn").value;
+          try {
+            sessionStorage.setItem(PASS_KEY, TPASS);
+          } catch (err) {}
+          loadTurmas();
+        };
+        setTimeout(() => $("#lockIn") && $("#lockIn").focus(), 50);
+      }
+      return;
+    }
     const turmas = Array.from(new Set(TEACHER.map((p) => (p.turma || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR"));
     if (TFILTER && !turmas.includes(TFILTER) && TFILTER !== "-") TFILTER = "";
     const shown = TEACHER.filter((p) => !TFILTER || (TFILTER === "-" ? !(p.turma || "").trim() : (p.turma || "").trim() === TFILTER));
@@ -3082,7 +3118,6 @@
     if (!on) return;
     const note = $("#welcomeNote");
     if (note) note.textContent = "Seu progresso fica salvo online. Em qualquer computador, entre com o mesmo nome e a mesma turma.";
-    if (location.hash.indexOf("#/professor") === 0) viewProfessor();
     cloudSync();
   });
   // carrega o Python em segundo plano

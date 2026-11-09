@@ -96,7 +96,7 @@ O código do servidor fica na pasta `api/` (três arquivos pequenos, sem instala
 
 ## Área do professor
 
-Entre em `seusite/#/professor` (tem link na tela inicial). Selecione ou arraste vários relatórios de uma vez: aparece uma tabela com turma, lições de Python e de Banco de Dados, ajudas usadas e tentativas de colar, com filtro por turma, o botão **Ver respostas** de cada aluno e **Baixar planilha (CSV)** para abrir no Excel ou Google Planilhas. Os arquivos são lidos só no seu navegador.
+Entre em `seusite/#/professor` (o link não aparece para os alunos: salve nos favoritos). Com o salvamento online ligado, a área inteira pede a senha `PROFESSOR_SENHA`. Selecione ou arraste vários relatórios de uma vez: aparece uma tabela com turma, lições de Python e de Banco de Dados, ajudas usadas e tentativas de colar, com filtro por turma, o botão **Ver respostas** de cada aluno e **Baixar planilha (CSV)** para abrir no Excel ou Google Planilhas. Os arquivos são lidos só no seu navegador.
 
 ## Mudar o conteúdo
 
