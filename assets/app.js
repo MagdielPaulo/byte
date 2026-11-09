@@ -275,8 +275,14 @@
     if (turma) P.turma = turma;
     saveDB();
   }
-  function logout() {
-    if (CLOUD.state === "pending") cloudSave();
+  /** Sair: com o salvamento online, o progresso vai para o servidor e é apagado deste computador */
+  async function logout() {
+    const key = DB.current;
+    if (CLOUD.online && P && P.turma) {
+      const ok = await cloudFlush();
+      if (ok) delete DB.profiles[key];
+      else toast("error", "Sem conexão com o servidor", "O progresso ficou guardado neste computador. Entre de novo com o mesmo nome e turma quando a internet voltar.");
+    }
     DB.current = null;
     P = null;
     saveDB();
@@ -394,6 +400,14 @@
       CLOUD.again = false;
       cloudSave();
     }
+  }
+  /** Espera o que estiver salvando e envia o progresso agora. Devolve true se ficou salvo online. */
+  async function cloudFlush() {
+    for (let i = 0; i < 80 && CLOUD.saving; i++) await new Promise((r) => setTimeout(r, 100));
+    clearTimeout(CLOUD.timer);
+    await cloudSave();
+    clearTimeout(CLOUD.timer);
+    return CLOUD.state === "saved";
   }
   /** Troca o progresso deste computador pelo que veio do servidor (mais novo) */
   function adoptCloud(remote, notify) {
@@ -826,7 +840,7 @@
         "</div>" +
         '<div class="save-state saved">' +
         (P.turma ? "Turma " + esc(P.turma) + " · " : "") +
-        (CLOUD.online ? "salvo online" : "salvo neste navegador") + '</div><a href="#/perfil">Perfil e entrega</a><button data-a="report">Baixar relatório</button><button data-a="logout">Trocar de aluno</button>';
+        (CLOUD.online ? "salvo online" : "salvo neste navegador") + '</div><a href="#/perfil">Perfil e entrega</a><button data-a="report">Baixar relatório</button><button data-a="logout">Sair</button>';
       $(".usermenu").appendChild(pop);
       pop.addEventListener("click", (ev) => {
         const a = ev.target.closest("[data-a]");
@@ -881,7 +895,6 @@
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }
   function viewWelcome() {
-    const names = Object.keys(DB.profiles);
     const turmaDefault = FOCUS && FOCUS.turma ? FOCUS.turma : "";
     app().innerHTML =
       '<div class="auth">' +
@@ -904,13 +917,6 @@
       "</p>" +
       '<p class="form-error" id="nameErr" hidden></p>' +
       '<button class="btn primary lg block">Começar</button></form>' +
-      (names.length
-        ? '<div class="field"><span class="small muted">Continuar neste computador como</span><div class="row">' +
-          names
-            .map((n) => '<button class="btn small" data-p="' + esc(n) + '">' + esc(n) + (DB.profiles[n].turma ? " · " + esc(DB.profiles[n].turma) : "") + "</button>")
-            .join("") +
-          "</div></div>"
-        : "") +
       '<div class="divider"></div>' +
       '<label class="btn ghost block filebtn">Continuar de um arquivo de progresso<input type="file" id="importFile" accept=".html,.json,text/html,application/json" hidden></label>' +
       '<p class="small muted center-text">Trocou de computador? Carregue o relatório que você baixou antes.</p>' +
@@ -934,17 +940,6 @@
       }
       enter(n, t, $("#nameForm button"));
     };
-    $$("[data-p]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          const t = DB.profiles[b.dataset.p].turma || (FOCUS && FOCUS.turma) || "";
-          if (t) enter(b.dataset.p, t, b);
-          else {
-            login(b.dataset.p, null);
-            go("#/trilha");
-          }
-        })
-    );
     $("#importFile").onchange = (e) => importFile(e.target.files[0], true);
     setTimeout(() => $("#nameInput") && $("#nameInput").focus(), 50);
   }
@@ -2419,7 +2414,7 @@
     h +=
       '</div><div class="settings"><div class="panel form"><h2 class="h3">Usar em outro computador</h2><p class="small muted">O progresso fica salvo neste navegador. Em outro computador, carregue o relatório que você baixou e continue de onde parou.</p>' +
       '<label class="btn filebtn">Carregar arquivo de progresso<input type="file" id="importFile2" accept=".html,.json,text/html,application/json" hidden></label>' +
-      '<button class="btn ghost" id="switchBtn">Trocar de aluno</button></div>' +
+      '<button class="btn ghost" id="switchBtn">Sair</button></div>' +
       '<div class="panel form"><h2 class="h3">Recomeçar do zero</h2><p class="small muted">Apaga XP, lições, conquistas e códigos deste aluno neste computador. Não dá para desfazer.</p><div id="resetArea"></div></div></div></div>';
     const main = shell("perfil", h);
     $("#turmaForm", main).onsubmit = (e) => {

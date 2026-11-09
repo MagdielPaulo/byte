@@ -35,7 +35,7 @@ Na primeira vez ele pede para fazer login (abre o navegador).
 
 - O aluno abre o site e digita o **nome e a turma**. O progresso fica salvo **no navegador daquele computador**.
 - No topo da Trilha ele escolhe a disciplina: **Python** ou **Banco de Dados**. Todas as lições ficam abertas, ele pode começar por qualquer uma.
-- Em computador compartilhado, cada aluno usa o próprio nome e aparece a lista para escolher.
+- Em computador compartilhado, a tela inicial não mostra quem já usou o computador: cada aluno digita o próprio nome e turma. No fim, ele clica em **Sair** (no menu da bolinha com a inicial, ou em Perfil). Com o salvamento online ligado, o Sair envia o progresso e apaga a cópia daquele computador.
 - No fim da aula, o aluno clica em **Baixar relatório** (na Trilha ou em Perfil e entrega) e te envia o arquivo `.html` (WhatsApp, Classroom, e-mail, pen drive).
 - O relatório abre em qualquer navegador e mostra XP, lições, cada resposta (inclusive as erradas) e os códigos escritos.
 - O mesmo arquivo serve para o aluno continuar em outro computador: na tela inicial, **Continuar de um arquivo de progresso**.
