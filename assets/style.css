@@ -636,3 +636,24 @@ details.others > summary:hover { color: var(--text); }
 .sqlconsole .console-out { max-height: 640px; }
 .turma-ask { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed var(--amber); border-radius: 10px; color: var(--amber); font-size: 15px; }
 .turma-ask input { flex: 1; min-width: 120px; padding: 7px 10px; background: var(--code-bg); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font: inherit; }
+
+/* ---------- Salvamento online ---------- */
+.cloud-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); flex: none; }
+.cloud-dot.saved { background: var(--green); box-shadow: 0 0 8px rgba(63, 240, 164, .6); }
+.cloud-dot.saving, .cloud-dot.pending { background: var(--amber); animation: pulse 1s ease-in-out infinite; }
+.cloud-dot.error { background: var(--bad); }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .cloud-dot.saving, .cloud-dot.pending { animation: none; } }
+.online-box { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; border-color: rgba(63, 240, 164, .45); }
+.online-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.online-head .h2 { margin: 2px 0 0; }
+.turma-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.turma-btn { font: inherit; display: flex; flex-direction: column; align-items: flex-start; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--code-bg); color: var(--text); cursor: pointer; }
+.turma-btn b { font-family: var(--f-display); font-size: 16px; }
+.turma-btn span { font-size: 12px; color: var(--muted); font-family: var(--f-mono); }
+.turma-btn:hover, .turma-btn.on { border-color: var(--green); }
+.turma-btn.on { box-shadow: 0 0 0 1px var(--green) inset; }
+.row-actions { white-space: nowrap; }
+.row-actions .del-area { margin-left: 6px; }
+.table.admin td:first-child { white-space: nowrap; }
+#tTable { margin-top: 16px; }

@@ -13,7 +13,7 @@ Abra o arquivo `index.html` com dois cliques (Chrome ou Edge). Pronto.
 ### Jeito 1: pelo GitHub (sem instalar nada)
 
 1. No GitHub, crie um repositório novo (pode ser público).
-2. Na página do repositório, clique em **uploading an existing file** e arraste **tudo que está dentro desta pasta** (index.html, assets, content, vendor, ferramentas, LEIA-ME.md). Clique em **Commit changes**.
+2. Na página do repositório, clique em **uploading an existing file** e arraste **tudo que está dentro desta pasta** (index.html, api, assets, content, vendor, ferramentas, LEIA-ME.md). Clique em **Commit changes**.
 3. Em vercel.com, clique em **Add New > Project** e importe esse repositório.
 4. Em **Framework Preset**, deixe **Other**. Não mude mais nada e clique em **Deploy**.
 5. Em um minuto a Vercel mostra o link do site (algo como `byte-a-byte.vercel.app`).
@@ -58,6 +58,32 @@ O link fica assim: `https://seusite.vercel.app/?foco=b03,b04&turma=2A&so=1`. Val
 - A correção compara o resultado do aluno com o da solução. Ela também roda as consultas com dados extras, então resposta "escrita na mão" (ex.: `WHERE id = 3`) não passa.
 - Usuários/GRANT e mysqldump não existem no SQLite: esses temas usam a sintaxe do MySQL em perguntas, lacunas e montagens.
 - No **Laboratório**, aba **SQL**: o aluno consulta e altera o banco à vontade, vê as tabelas, gera gráfico de barras, **baixa um backup** `.sql`, **reseta** e **restaura** o backup.
+
+## Salvamento online (opcional)
+
+Sem configurar nada, o site funciona como sempre: progresso no navegador + relatório em arquivo. Ligando um banco na Vercel, o progresso de cada aluno vai sozinho para o servidor:
+
+- O aluno entra com **nome e turma**. Em qualquer computador, com o mesmo nome e a mesma turma, o progresso volta. Maiúsculas, acentos e espaços não importam ("2º A", "2A" e "2 a" são a mesma turma).
+- Um pontinho no topo mostra o estado: verde = salvo online, amarelo = salvando, vermelho = sem conexão (fica salvo no computador e envia quando a internet voltar).
+- Na **Área do professor**, com a sua senha, aparecem as turmas. Clique numa turma para ver a tabela de todos os alunos e as respostas de cada um. O botão **Remover** apaga um aluno (nome digitado errado, por exemplo).
+- O relatório em arquivo continua funcionando, como cópia de segurança.
+- Fica guardado só nome, turma e progresso nas lições. Quem souber o nome e a turma de um aluno consegue entrar no progresso dele: é o combinado para ficar simples em sala.
+
+### Como ligar (uma vez só, uns 5 minutos)
+
+Os nomes dos botões da Vercel podem mudar um pouco, mas o caminho é este:
+
+1. Entre em vercel.com e abra o projeto do site.
+2. Vá na aba **Storage** e clique em **Create Database** (ou **Connect Database**).
+3. Escolha **Upstash** e depois **Redis**. Plano **Free**. Região: a mais perto (São Paulo, se aparecer). Confirme.
+4. Quando ele perguntar em quais ambientes conectar, deixe todos marcados e confirme. A Vercel cria sozinha as variáveis `KV_REST_API_URL` e `KV_REST_API_TOKEN` (ou `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN`; as duas formas funcionam).
+5. Vá em **Settings → Environment Variables** e crie a variável **`PROFESSOR_SENHA`** com a senha que você quer usar na Área do professor. Salve.
+6. Vá em **Deployments**, clique nos três pontinhos do deploy mais recente e em **Redeploy**.
+7. Abra o site: na tela inicial deve aparecer "Seu progresso fica salvo online". Pronto.
+
+Para conferir se o banco está ligado, abra `seusite.vercel.app/api/status`: deve mostrar `{"online":true,"professor":true}`.
+
+O código do servidor fica na pasta `api/` (três arquivos pequenos, sem instalar nada).
 
 ## Exercícios de código: sem colar
 
