@@ -638,12 +638,16 @@ details.others > summary:hover { color: var(--text); }
 .turma-ask input { flex: 1; min-width: 120px; padding: 7px 10px; background: var(--code-bg); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font: inherit; }
 
 /* ---------- Salvamento online ---------- */
-.cloud-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); flex: none; }
-.cloud-dot.saved { background: var(--green); box-shadow: 0 0 8px rgba(63, 240, 164, .6); }
-.cloud-dot.saving, .cloud-dot.pending { background: var(--amber); animation: pulse 1s ease-in-out infinite; }
-.cloud-dot.error { background: var(--bad); }
-@keyframes pulse { 50% { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) { .cloud-dot.saving, .cloud-dot.pending { animation: none; } }
+.cloud-dot { display: inline-flex; align-items: center; gap: 6px; font-family: var(--f-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cloud-dot i { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); flex: none; }
+.cloud-dot.saved { color: var(--green); }
+.cloud-dot.saved i { background: var(--green); box-shadow: 0 0 8px rgba(63, 240, 164, .6); }
+.cloud-dot.saving, .cloud-dot.pending { color: var(--amber); }
+.cloud-dot.saving i, .cloud-dot.pending i { background: var(--amber); animation: cloudblink 1s ease-in-out infinite; }
+.cloud-dot.error { color: var(--bad); }
+.cloud-dot.error i { background: var(--bad); }
+@keyframes cloudblink { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .cloud-dot i { animation: none !important; } }
 .online-box { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; border-color: rgba(63, 240, 164, .45); }
 .online-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .online-head .h2 { margin: 2px 0 0; }
@@ -657,3 +661,5 @@ details.others > summary:hover { color: var(--text); }
 .row-actions .del-area { margin-left: 6px; }
 .table.admin td:first-child { white-space: nowrap; }
 #tTable { margin-top: 16px; }
+.out-note { margin-top: 14px; padding: 10px 12px; border: 1px solid rgba(63, 240, 164, .5); border-radius: 10px; background: rgba(63, 240, 164, .07); font-size: 14px; color: var(--text); }
+.out-note b:first-child { color: var(--green); }

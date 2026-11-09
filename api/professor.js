@@ -30,10 +30,13 @@ module.exports = async (req, res) => {
       const pares = [];
       for (let i = 0; i < (flat || []).length; i += 2) pares.push([flat[i], flat[i + 1]]);
       const counts = pares.length ? await db.pipeline(pares.map(([tk]) => ["SCARD", db.K.turma(tk)])) : [];
-      const turmas = pares.map(([tk, nome], i) => ({ chave: tk, nome, alunos: counts[i] || 0 })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+      const turmas = pares
+        .map(([tk, nome], i) => ({ chave: tk, nome, alunos: counts[i] || 0 }))
+        .filter((t) => t.alunos > 0)
+        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
       return db.send(res, 200, { turmas });
     }
-    const tk = db.turmaKey(q.turma);
+    const tk = db.safeKey(q.chave) || db.turmaKey(q.turma);
     if (!tk) return db.send(res, 400, { erro: "Turma inválida" });
     if (req.method === "GET") {
       const [membros] = await db.pipeline([["SMEMBERS", db.K.turma(tk)]]);

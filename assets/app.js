@@ -275,12 +275,16 @@
     if (turma) P.turma = turma;
     saveDB();
   }
+  /** Aviso mostrado na tela inicial logo depois de sair */
+  let LAST_OUT = null;
   /** Sair: com o salvamento online, o progresso vai para o servidor e é apagado deste computador */
   async function logout() {
     const key = DB.current;
+    LAST_OUT = P ? { name: P.name, turma: P.turma, saved: false } : null;
     if (CLOUD.online && P && P.turma) {
       const ok = await cloudFlush();
       if (ok) delete DB.profiles[key];
+      if (LAST_OUT) LAST_OUT.saved = ok;
       else toast("error", "Sem conexão com o servidor", "O progresso ficou guardado neste computador. Entre de novo com o mesmo nome e turma quando a internet voltar.");
     }
     DB.current = null;
@@ -313,13 +317,21 @@
 
   /* ================= Salvamento online (quando o site está na Vercel com o banco conectado) ================= */
   const CLOUD = { online: false, checked: false, professor: false, state: "off", timer: null, saving: false, again: false, turmaAntes: null, checking: null };
+  /** Mesma regra do servidor: "1º ano", "primeiro ano" e "1ano" são a mesma turma */
   function cloudKey(s) {
-    return String(s || "")
+    const base = String(s || "")
       .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
+      .replace(/[\u0300-\u036f]/g, "")
       .replace(/[ºª°]/g, "")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "");
+    const k = base
+      .replace(/primeir[oa]/g, "1")
+      .replace(/segund[oa]/g, "2")
+      .replace(/terceir[oa]/g, "3")
+      .replace(/quart[oa]/g, "4")
+      .replace(/anos?|series?|turma/g, "");
+    return k || base;
   }
   function cloudCheck() {
     if (CLOUD.checking) return CLOUD.checking;
@@ -336,6 +348,7 @@
         const j = r.ok ? await r.json() : null;
         CLOUD.online = Boolean(j && j.online);
         CLOUD.professor = Boolean(j && j.professor);
+        CLOUD.turmas = (j && j.turmas) || [];
       } catch (e) {
         CLOUD.online = false;
       }
@@ -357,9 +370,10 @@
     if (d) {
       d.className = "cloud-dot " + s;
       d.title = CLOUD_TXT[s] || "";
-      d.setAttribute("aria-label", CLOUD_TXT[s] || "");
+      $("span", d).textContent = CLOUD_LABEL[s] || "";
     }
   }
+  const CLOUD_LABEL = { saved: "Salvo", saving: "Salvando", pending: "Salvando", error: "Sem internet" };
   const CLOUD_TXT = { saved: "Progresso salvo online", saving: "Salvando online...", pending: "Salvando online...", error: "Sem conexão: salvo neste computador. Tento de novo sozinho." };
   function cloudSaveSoon(ms) {
     if (!CLOUD.online || !P || !P.turma) return;
@@ -810,7 +824,7 @@
     if (!hud || !P) return;
     const lv = levelInfo(P.xp);
     hud.innerHTML =
-      (CLOUD.online ? '<span id="cloudDot" class="cloud-dot ' + CLOUD.state + '" role="img" title="' + (CLOUD_TXT[CLOUD.state] || "") + '" aria-label="' + (CLOUD_TXT[CLOUD.state] || "") + '"></span>' : "") +
+      (CLOUD.online ? '<span id="cloudDot" class="cloud-dot ' + CLOUD.state + '" title="' + (CLOUD_TXT[CLOUD.state] || "") + '"><i></i><span>' + (CLOUD_LABEL[CLOUD.state] || "") + "</span></span>" : "") +
       (P.turma ? '<span class="hud-turma" title="Sua turma">' + esc(P.turma) + "</span>" : "") +
       '<div class="hud-level" title="' +
       lv.into +
@@ -890,9 +904,19 @@
   /* ================= Tela: boas-vindas ================= */
   function knownTurmas() {
     const set = new Set();
-    Object.values(DB.profiles).forEach((p) => p.turma && set.add(p.turma));
+    (CLOUD.turmas || []).forEach((t) => set.add(t));
+    if (P && P.turma) set.add(P.turma);
     if (FOCUS && FOCUS.turma) set.add(FOCUS.turma);
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    // uma sugestão por turma ("1º ano" e "primeiro ano" contam como uma só)
+    const seen = new Set();
+    return Array.from(set)
+      .filter((t) => {
+        const k = cloudKey(t);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
   }
   function viewWelcome() {
     const turmaDefault = FOCUS && FOCUS.turma ? FOCUS.turma : "";
@@ -913,10 +937,21 @@
         .join("") +
       "</datalist>" +
       '<p class="small muted" id="welcomeNote">' +
-      (CLOUD.online ? "Seu progresso fica salvo online. Em qualquer computador, entre com o mesmo nome e a mesma turma." : "Use sempre o mesmo nome. Nome e turma aparecem no relatório que você entrega.") +
+      (CLOUD.online ? "Já usou antes? Digite o mesmo nome e a mesma turma e você continua de onde parou, em qualquer computador ou celular. Tudo é salvo online sozinho." : "Use sempre o mesmo nome. Nome e turma aparecem no relatório que você entrega.") +
       "</p>" +
       '<p class="form-error" id="nameErr" hidden></p>' +
       '<button class="btn primary lg block">Começar</button></form>' +
+      (LAST_OUT
+        ? '<div class="out-note"><b>✓ ' +
+          esc(LAST_OUT.saved ? "Progresso salvo online." : "Progresso guardado neste computador.") +
+          "</b> Para continuar depois, entre com <b>" +
+          esc(LAST_OUT.name) +
+          "</b> na turma <b>" +
+          esc(LAST_OUT.turma || "-") +
+          "</b>" +
+          (LAST_OUT.saved ? ", em qualquer computador ou celular." : ".") +
+          "</div>"
+        : "") +
       '<div class="divider"></div>' +
       '<label class="btn ghost block filebtn">Continuar de um arquivo de progresso<input type="file" id="importFile" accept=".html,.json,text/html,application/json" hidden></label>' +
       '<p class="small muted center-text">Trocou de computador? Carregue o relatório que você baixou antes.</p>' +
@@ -946,6 +981,7 @@
 
   /** Entrar com nome e turma: com o banco online, traz o progresso salvo (de qualquer computador) */
   async function enter(n, t, btn) {
+    LAST_OUT = null;
     if (btn) {
       btn.disabled = true;
       btn.textContent = "Entrando...";
@@ -973,7 +1009,11 @@
     login(n, t);
     if (CLOUD.online) {
       if (!remote || (P.updated || 0) > (remote.updated || 0)) cloudSave();
-      if (remote) toast("info", "Progresso carregado", "Bem-vindo de volta, " + P.name.split(" ")[0] + ".");
+      const first = P.name.split(" ")[0];
+      const nLessons = Object.keys(P.lessons || {}).length;
+      if (remote)
+        toast("info", "Bem-vindo de volta, " + first + "!", "Seu progresso foi carregado: " + P.xp + " XP e " + nLessons + (nLessons === 1 ? " lição concluída." : " lições concluídas."));
+      else if (!failed) toast("info", "Conta criada: " + P.name + " · " + P.turma, "Tudo o que você fizer fica salvo online sozinho. Para voltar, use o mesmo nome e turma.");
     }
     if (failed) toast("error", "Sem conexão com o servidor", "Seu progresso fica salvo neste computador e vai para o servidor quando a conexão voltar.");
     go("#/trilha");
@@ -2764,9 +2804,9 @@
   async function loadTurmaOnline(t) {
     TLOADING = true;
     try {
-      const j = await profApi("?turma=" + encodeURIComponent(t.nome));
+      const j = await profApi("?chave=" + encodeURIComponent(t.chave || "") + "&turma=" + encodeURIComponent(t.nome));
       TEACHER = j.alunos.map((a) => normalize(a, a.name)).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-      TSRC = { nome: t.nome, at: Date.now() };
+      TSRC = { nome: t.nome, chave: t.chave, at: Date.now() };
       TFILTER = "";
     } catch (e) {
       toast("error", "Não deu para abrir a turma", e.message);
@@ -2796,7 +2836,7 @@
       TTURMAS.map(
         (t, i) =>
           '<button class="turma-btn' +
-          (TSRC && cloudKey(TSRC.nome) === cloudKey(t.nome) ? " on" : "") +
+          (TSRC && TSRC.chave === t.chave ? " on" : "") +
           '" data-turma="' +
           i +
           '"><b>' +
@@ -2825,8 +2865,8 @@
     if ($("#tRefresh"))
       $("#tRefresh").onclick = () => {
         if (TSRC) {
-          const nome = TSRC.nome;
-          loadTurmas().then(() => loadTurmaOnline({ nome }));
+          const src = { nome: TSRC.nome, chave: TSRC.chave };
+          loadTurmas().then(() => loadTurmaOnline(src));
         } else loadTurmas();
       };
     if ($("#tLogout"))
@@ -3036,7 +3076,7 @@
         };
         $("[data-y]", area).onclick = async () => {
           try {
-            await profApi("?turma=" + encodeURIComponent(TSRC.nome) + "&nome=" + encodeURIComponent(TEACHER[i].name), "DELETE");
+            await profApi("?chave=" + encodeURIComponent(TSRC.chave || "") + "&turma=" + encodeURIComponent(TSRC.nome) + "&nome=" + encodeURIComponent(TEACHER[i].name), "DELETE");
             toast("info", "Aluno removido", TEACHER[i].name);
             TEACHER.splice(i, 1);
             await loadTurmas();
@@ -3112,7 +3152,9 @@
   cloudCheck().then((on) => {
     if (!on) return;
     const note = $("#welcomeNote");
-    if (note) note.textContent = "Seu progresso fica salvo online. Em qualquer computador, entre com o mesmo nome e a mesma turma.";
+    if (note) note.textContent = "Já usou antes? Digite o mesmo nome e a mesma turma e você continua de onde parou, em qualquer computador ou celular. Tudo é salvo online sozinho.";
+    const dl = $("#turmaList");
+    if (dl) dl.innerHTML = knownTurmas().map((t) => '<option value="' + esc(t) + '"></option>').join("");
     cloudSync();
   });
   // carrega o Python em segundo plano

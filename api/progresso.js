@@ -6,6 +6,14 @@
 const db = require("./_db");
 const MAX = 900 * 1024;
 
+/** Chaves antigas de turma que hoje contam como a mesma turma */
+async function legacyKeys(tk) {
+  const [flat] = await db.pipeline([["HGETALL", db.K.turmas]]);
+  const out = [];
+  for (let i = 0; i < (flat || []).length; i += 2) if (flat[i] !== tk && db.turmaKey(flat[i + 1]) === tk) out.push(flat[i]);
+  return out;
+}
+
 module.exports = async (req, res) => {
   if (!db.configured()) return db.send(res, 503, { erro: "Banco não conectado" });
   try {
@@ -15,7 +23,15 @@ module.exports = async (req, res) => {
       const nk = db.keyOf(q.nome);
       if (!tk || !nk) return db.send(res, 400, { erro: "Informe nome e turma" });
       const [raw] = await db.pipeline([["GET", db.K.aluno(tk, nk)]]);
-      return db.send(res, 200, { progresso: raw ? JSON.parse(raw) : null });
+      if (raw) return db.send(res, 200, { progresso: JSON.parse(raw) });
+      // salvo pela primeira versão, com a turma escrita de outro jeito ("1º ano" x "primeiro ano")?
+      const olds = await legacyKeys(tk);
+      if (olds.length) {
+        const vals = await db.pipeline(olds.map((k) => ["GET", db.K.aluno(k, nk)]));
+        const found = vals.filter(Boolean).map((v) => JSON.parse(v)).sort((a, b) => (b.updated || 0) - (a.updated || 0))[0];
+        if (found) return db.send(res, 200, { progresso: found });
+      }
+      return db.send(res, 200, { progresso: null });
     }
     if (req.method === "POST") {
       const b = await db.readBody(req);
@@ -43,6 +59,7 @@ module.exports = async (req, res) => {
       ];
       const atk = b.turmaAntes ? db.turmaKey(b.turmaAntes) : "";
       if (atk && atk !== tk) cmds.push(["DEL", db.K.aluno(atk, nk)], ["SREM", db.K.turma(atk), nk]);
+      for (const lk of await legacyKeys(tk)) if (lk !== atk) cmds.push(["DEL", db.K.aluno(lk, nk)], ["SREM", db.K.turma(lk), nk]);
       await db.pipeline(cmds);
       return db.send(res, 200, { ok: true, updated: p.updated || 0 });
     }

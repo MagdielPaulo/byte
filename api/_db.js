@@ -39,7 +39,18 @@ function keyOf(s) {
     .replace(/ /g, "-");
 }
 const clean = (s, max) => String(s || "").replace(/\s+/g, " ").trim().slice(0, max);
-const turmaKey = (t) => keyOf(t).replace(/-/g, "");
+/** "1º ano", "primeiro ano", "1 ano" e "1ano" viram a mesma turma ("1"); "2º ano A" e "2A" viram "2a" */
+function turmaKey(t) {
+  const base = keyOf(t).replace(/-/g, "");
+  const k = base
+    .replace(/primeir[oa]/g, "1")
+    .replace(/segund[oa]/g, "2")
+    .replace(/terceir[oa]/g, "3")
+    .replace(/quart[oa]/g, "4")
+    .replace(/anos?|series?|turma/g, "");
+  return k || base;
+}
+const safeKey = (k) => (/^[a-z0-9]{1,60}$/.test(String(k || "")) ? String(k) : "");
 const K = {
   turmas: "bab:turmas",
   turma: (tk) => "bab:t:" + tk,
@@ -67,4 +78,4 @@ function query(req) {
   return Object.fromEntries(u.searchParams.entries());
 }
 
-module.exports = { configured, pipeline, keyOf, turmaKey, clean, K, send, readBody, query };
+module.exports = { configured, pipeline, keyOf, turmaKey, safeKey, clean, K, send, readBody, query };
