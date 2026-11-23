@@ -53,9 +53,29 @@ function turmaKey(t) {
 const safeKey = (k) => (/^[a-z0-9]{1,60}$/.test(String(k || "")) ? String(k) : "");
 const K = {
   turmas: "bab:turmas",
+  placar: (tk) => "bab:r:" + tk,
   turma: (tk) => "bab:t:" + tk,
   aluno: (tk, nk) => "bab:a:" + tk + ":" + nk,
 };
+
+/** "Ana Lima Souza" -> "Ana S." (o ranking não mostra o nome completo) */
+function nomeCurto(nome) {
+  const p = clean(nome, 40).split(" ").filter(Boolean);
+  if (p.length < 2) return p[0] || "";
+  return p[0] + " " + p[p.length - 1].charAt(0).toUpperCase() + ".";
+}
+/** Resumo leve do progresso, usado no ranking */
+function resumo(p) {
+  const ls = Object.keys(p.lessons || {});
+  return {
+    nome: nomeCurto(p.name),
+    xp: Number(p.xp) || 0,
+    py: ls.filter((id) => /^m\d/.test(id)).length,
+    bd: ls.filter((id) => /^b\d/.test(id)).length,
+    estrelas: Object.values(p.lessons || {}).reduce((a, l) => a + (Number(l.stars) || 0), 0),
+    atualizado: Number(p.updated) || 0,
+  };
+}
 
 function send(res, status, obj) {
   res.statusCode = status;
@@ -78,4 +98,4 @@ function query(req) {
   return Object.fromEntries(u.searchParams.entries());
 }
 
-module.exports = { configured, pipeline, keyOf, turmaKey, safeKey, clean, K, send, readBody, query };
+module.exports = { configured, pipeline, keyOf, turmaKey, safeKey, clean, nomeCurto, resumo, K, send, readBody, query };

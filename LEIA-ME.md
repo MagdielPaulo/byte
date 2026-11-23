@@ -83,7 +83,20 @@ Os nomes dos botões da Vercel podem mudar um pouco, mas o caminho é este:
 
 Para conferir se o banco está ligado, abra `seusite.vercel.app/api/status`: deve mostrar `{"online":true,"professor":true}`.
 
-O código do servidor fica na pasta `api/` (três arquivos pequenos, sem instalar nada).
+O código do servidor fica na pasta `api/` (arquivos pequenos, sem instalar nada).
+
+## Resposta explicada
+
+Nos exercícios de código (Python e SQL), depois que o aluno usa todas as dicas e todas as linhas que dá para revelar, aparece o botão **Ver a resposta explicada**. Ele mostra a solução e, abaixo, uma árvore linha por linha:
+
+- Python: a árvore segue o recuo (o que está dentro do `def`, do `if`, do `for`). Cada linha diz o que faz, e os operadores novos (`%`, `//`, `and`...) ganham uma nota.
+- SQL: cada comando se abre nas suas cláusulas (SELECT, FROM, WHERE...) e, no CREATE TABLE, em cada coluna com suas restrições.
+
+Ver a resposta não resolve o exercício sozinho: o aluno ainda digita (colar continua bloqueado) e verifica. O exercício vale só 1 XP, volta na Revisão e aparece no relatório e na Área do professor (coluna **Viu resposta**). As explicações são geradas automaticamente a partir da solução; `node ferramentas/verificar-conteudo.js` avisa se alguma linha ficar sem explicação.
+
+## Ranking da turma
+
+Com o salvamento online ligado, o menu **Ranking** mostra a turma do aluno ordenada por XP, e também por lições de Python ou de Banco de Dados. Aparece só o primeiro nome e a inicial do sobrenome (Ana Lima → Ana L.), e a tela atualiza sozinha a cada 30 segundos. Sem o banco online, a tela avisa que o ranking está desligado.
 
 ## Exercícios de código: sem colar
 

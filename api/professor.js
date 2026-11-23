@@ -48,8 +48,8 @@ module.exports = async (req, res) => {
     if (req.method === "DELETE") {
       const nk = db.keyOf(q.nome);
       if (!nk) return db.send(res, 400, { erro: "Nome inválido" });
-      const [, , restantes] = await db.pipeline([["DEL", db.K.aluno(tk, nk)], ["SREM", db.K.turma(tk), nk], ["SCARD", db.K.turma(tk)]]);
-      if (!restantes) await db.pipeline([["HDEL", db.K.turmas, tk], ["DEL", db.K.turma(tk)]]);
+      const [, , , restantes] = await db.pipeline([["DEL", db.K.aluno(tk, nk)], ["SREM", db.K.turma(tk), nk], ["HDEL", db.K.placar(tk), nk], ["SCARD", db.K.turma(tk)]]);
+      if (!restantes) await db.pipeline([["HDEL", db.K.turmas, tk], ["DEL", db.K.turma(tk)], ["DEL", db.K.placar(tk)]]);
       return db.send(res, 200, { ok: true });
     }
     res.setHeader("Allow", "GET, DELETE");

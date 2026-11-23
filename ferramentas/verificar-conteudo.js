@@ -5,6 +5,7 @@
   - Roda a solução de cada exercício de código contra a correção (tem que passar).
   - Confere que o código inicial NÃO passa (senão o exercício já viria pronto).
   - Confere quizzes (uma resposta certa), lacunas e montagens.
+  - Avisa se alguma linha de solução fica sem explicação na "resposta explicada".
 */
 const path = require("path");
 const fs = require("fs");
@@ -23,6 +24,7 @@ load("vendor/skulpt.min.js");
 load("vendor/skulpt-stdlib.js");
 load("assets/python.js");
 load("assets/sql.js");
+load("assets/explain.js");
 const initSqlJs = require(path.join(ROOT, "vendor/sql-asm.js"));
 
 let problems = 0;
@@ -103,6 +105,8 @@ function starterOf(mod, lesson, index, step) {
           db.close();
         } else if (s.kind === "code") {
           code++;
+          const ex = sql ? EXPLAIN.sql(s.solution) : EXPLAIN.python(s.solution);
+          if (ex.unknown) warn(tag + ": " + ex.unknown + " linha(s) da solução sem explicação automática");
           const starter = starterOf(m, l, i, s);
           if (sql) {
             const v = SQ.verify(s, s.solution);

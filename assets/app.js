@@ -802,6 +802,7 @@
     ["trilha", "Trilha"],
     ["revisao", "Revisão"],
     ["lab", "Laboratório"],
+    ["ranking", "Ranking"],
     ["perfil", "Perfil e entrega"],
   ];
   function shell(active, inner) {
@@ -1585,6 +1586,37 @@
     return out;
   }
   const HELP_COST = { hint: 2, line: 3 };
+  /** Resposta explicada: a solução inteira e, abaixo, a árvore linha por linha */
+  function answerHtml(step, lang) {
+    const r = lang === "sql" ? EXPLAIN.sql(step.solution) : EXPLAIN.python(step.solution);
+    const seen = new Set();
+    const node = (n) => {
+      const g = (n.gloss || []).filter((x) => !seen.has(x));
+      g.forEach((x) => seen.add(x));
+      const body =
+        (n.text ? '<p class="ans-text">' + rich(n.text) + "</p>" : "") +
+        (g.length ? '<ul class="ans-gloss">' + g.map((x) => "<li>" + rich(x) + "</li>").join("") + "</ul>" : "");
+      const head =
+        (n.title ? '<span class="ans-title">' + esc(n.title) + "</span>" : "") +
+        (n.code != null ? '<code class="ans-code">' + highlight(n.code.trim(), lang) + "</code>" : "");
+      if (n.children && n.children.length)
+        return '<li class="ans-node"><details open><summary>' + head + "</summary>" + body + '<ol class="ans-kids">' + n.children.map(node).join("") + "</ol></details></li>";
+      return '<li class="ans-leaf">' + head + body + "</li>";
+    };
+    return (
+      '<div class="answer-box">' +
+      codeView(step.solution.replace(/\s+$/, ""), "Resposta", lang) +
+      '<div class="ans-head"><span class="eyebrow">Linha por linha</span><span class="small muted">' +
+      (lang === "sql" ? "Cada comando se abre nas suas partes." : "Cada nível da árvore é um recuo de 4 espaços no editor.") +
+      " Clique numa linha com ▸ para recolher.</span></div>" +
+      '<ol class="ans-tree">' +
+      r.nodes.map(node).join("") +
+      "</ol>" +
+      (step.after ? '<p class="ans-after"><b>Por que funciona:</b> ' + rich(step.after) + "</p>" : "") +
+      '<p class="ans-next">Agora digite a resposta no editor, sem olhar se conseguir, e clique em <b>Verificar</b>. O exercício vale 1 XP e volta na <b>Revisão</b> para você refazer sozinho.</p>' +
+      "</div>"
+    );
+  }
   const showIndent = (line) => {
     const m = line.match(/^ */)[0].length;
     return '<span class="indent-dots" title="' + m + ' espaços">' + "·".repeat(m) + "</span>" + highlight(line.slice(m));
@@ -1598,7 +1630,9 @@
     const isSql = ctx.lang === "sql";
     const lines = revealCandidates(s, starter, ctx.lang);
     const lineLimit = Math.floor(lines.length / 2);
-    const help = Object.assign({ hints: 0, lines: 0, pastes: 0 }, (P.help || {})[key]);
+    const help = Object.assign({ hints: 0, lines: 0, pastes: 0, answers: 0 }, (P.help || {})[key]);
+    let answerNow = false;
+    let askAnswer = false;
     let state = "work";
     let fails = 0;
     let showSol = false;
@@ -1682,6 +1716,7 @@
       con.run(ed.get());
     }
     function xpNow() {
+      if (answerNow) return 1;
       return Math.max(3, XP.code - help.hints * HELP_COST.hint - help.lines * HELP_COST.line);
     }
     function renderBrief() {
@@ -1702,14 +1737,37 @@
         b += '<button class="btn ghost small" data-a="hint">Dica ' + (help.hints + 1) + "/" + s.hints.length + ' <span class="cost">−' + HELP_COST.hint + " XP</span></button>";
       if (working && lineLimit > 0 && help.lines < lineLimit)
         b += '<button class="btn ghost small" data-a="line">Revelar uma linha ' + (help.lines + 1) + "/" + lineLimit + ' <span class="cost">−' + HELP_COST.line + " XP</span></button>";
-      if (!working && !showSol) b += '<button class="btn ghost small" data-a="sol">Comparar com uma solução</button>';
+      if (!working && !showSol && !answerNow) b += '<button class="btn ghost small" data-a="sol">Comparar com uma solução</button>';
       b += "</div>";
-      if (working && help.lines >= lineLimit && help.hints >= s.hints.length)
-        b += '<p class="small muted">Você usou todas as ajudas. O resto é com você: releia as dicas, rode o código e compare com o exemplo. Se travar, pule e volte na revisão.</p>';
-      else if (working && lineLimit > 0) b += '<p class="small muted">Dá para revelar até metade das linhas. A outra metade é com você.</p>';
+      const helpsUsed = help.lines >= lineLimit && help.hints >= s.hints.length;
+      if (working && helpsUsed && !answerNow) {
+        if (askAnswer)
+          b +=
+            '<div class="answer-ask"><p><b>Ver a resposta explicada?</b> Você vai ver a solução e o que cada linha faz. Depois ainda precisa digitar e verificar. O exercício passa a valer 1 XP e volta na Revisão.</p><div class="row"><button class="btn primary small" data-a="ans-yes">Ver a resposta</button><button class="btn ghost small" data-a="ans-no">Vou tentar mais um pouco</button></div></div>';
+        else
+          b +=
+            '<p class="small muted">Você usou todas as dicas e linhas. Releia o enunciado e rode o código. Se ainda assim travar:</p><button class="btn small answer-btn" data-a="ans">Ver a resposta explicada</button>';
+      } else if (working && !answerNow && lineLimit > 0) b += '<p class="small muted">Dá para revelar até metade das linhas. Depois de usar todas as ajudas, aparece a opção de ver a resposta explicada.</p>';
+      else if (working && !answerNow) b += '<p class="small muted">Depois de usar todas as dicas, aparece a opção de ver a resposta explicada.</p>';
       b += "</div>";
       $(".helpbox", el).innerHTML = b;
-      $(".solution", el).innerHTML = showSol ? codeView(s.solution, "Uma solução possível") : "";
+      $(".solution", el).innerHTML = answerNow ? answerHtml(s, ctx.lang) : showSol ? codeView(s.solution, "Uma solução possível", ctx.lang) : "";
+      const ab = $('[data-a="ans"]', el);
+      if (ab) ab.onclick = () => ((askAnswer = true), renderBrief());
+      const an = $('[data-a="ans-no"]', el);
+      if (an) an.onclick = () => ((askAnswer = false), renderBrief());
+      const ay = $('[data-a="ans-yes"]', el);
+      if (ay)
+        ay.onclick = () => {
+          answerNow = true;
+          askAnswer = false;
+          help.answers = (help.answers || 0) + 1;
+          update((p) => (p.stats.answers = (p.stats.answers || 0) + 1));
+          saveHelp();
+          renderBrief();
+          const box = $(".answer-box", el);
+          if (box) box.scrollIntoView({ behavior: "smooth", block: "start" });
+        };
       const hb = $('[data-a="hint"]', el);
       if (hb)
         hb.onclick = () => {
@@ -1812,7 +1870,7 @@
       });
       if (allOk) {
         state = "ok";
-        ctx.onSolved({ status: "ok", clean: fails === 0 && help.hints === 0 && help.lines === 0, xp: xpNow(), help: Object.assign({}, help) }, code);
+        ctx.onSolved({ status: "ok", clean: fails === 0 && help.hints === 0 && help.lines === 0 && !answerNow, xp: xpNow(), sawAnswer: answerNow, help: Object.assign({}, help) }, code);
         showDone();
         renderBrief();
         return;
@@ -2025,17 +2083,19 @@
             (p) => {
               const prev = p.steps[item.key];
               if (review) {
-                if (o.status === "ok") {
+                if (o.status === "ok" && o.sawAnswer) xp = 1; // viu a resposta: continua na revisão
+                else if (o.status === "ok") {
                   xp = 4;
                   p.review = p.review.filter((x) => x !== item.key);
                   p.stats.reviewed++;
                 }
               } else if (!prev || prev.status !== "ok") {
-                if (o.status === "ok") xp = had ? Math.min(XP.retry, o.xp != null ? o.xp : XP.retry) : o.xp != null ? o.xp : XP[kind];
+                if (o.status === "ok" && o.sawAnswer) xp = 1;
+                else if (o.status === "ok") xp = had ? Math.min(XP.retry, o.xp != null ? o.xp : XP.retry) : o.xp != null ? o.xp : XP[kind];
                 if (kind === "code" && o.status === "ok" && o.clean) p.stats.codeClean++;
                 p.steps[item.key] = { xp: ((prev && prev.xp) || 0) + xp, status: o.status };
               }
-              if (o.status !== "ok" && !p.review.includes(item.key)) p.review.push(item.key);
+              if ((o.status !== "ok" || o.sawAnswer) && !p.review.includes(item.key)) p.review.push(item.key);
               p.xp += xp;
               if (kind !== "explain") {
                 const a = p.answers[item.key] || { kind, tries: 0, wrong: [], status: null, answer: null };
@@ -2043,6 +2103,7 @@
                 a.status = o.status;
                 if (answer != null) a.answer = String(answer).slice(0, 6000);
                 if (o.help) a.help = o.help;
+                if (o.sawAnswer) a.sawAnswer = true;
                 a.at = Date.now();
                 p.answers[item.key] = a;
               }
@@ -2385,6 +2446,137 @@
     };
   }
 
+  /* ================= Tela: ranking da turma ================= */
+  let RK_TAB = "xp";
+  let RK_TIMER = null;
+  const RK_TABS = [
+    ["xp", "Geral"],
+    ["py", "Python"],
+    ["bd", "Banco de Dados"],
+  ];
+  function viewRanking() {
+    clearInterval(RK_TIMER);
+    let h =
+      '<div class="wrap page"><div class="lab-head"><div><h1 class="h1">Ranking da turma</h1><p class="muted" id="rkSub">' +
+      (P.turma ? "Turma " + esc(P.turma) : "") +
+      '</p></div><div class="course-tabs small-tabs" role="tablist">' +
+      RK_TABS.map((t) => '<button class="course-tab' + (t[0] === RK_TAB ? " on" : "") + '" data-rk="' + t[0] + '" role="tab">' + t[1] + "</button>").join("") +
+      '</div></div><div id="rkBody"><p class="muted">Carregando...</p></div></div>';
+    const main = shell("ranking", h);
+    $$("[data-rk]", main).forEach((b) => (b.onclick = () => ((RK_TAB = b.dataset.rk), viewRanking())));
+    const body = $("#rkBody", main);
+    let data = null;
+    function render() {
+      if (!data) return;
+      const key = RK_TAB;
+      const list = data.alunos
+        .slice()
+        .sort((a, b) => (key === "xp" ? b.xp - a.xp : b[key] - a[key] || b.xp - a.xp) || a.nome.localeCompare(b.nome, "pt-BR"));
+      if (!list.length) {
+        body.innerHTML = '<section class="panel"><p class="muted">Ninguém da turma salvou progresso ainda. Assim que alguém fizer uma lição, aparece aqui.</p></section>';
+        return;
+      }
+      // empate divide a posição
+      let pos = 0,
+        last = null;
+      list.forEach((a, i) => {
+        const v = key === "xp" ? a.xp : a[key] * 100000 + a.xp;
+        if (v !== last) pos = i + 1;
+        last = v;
+        a.pos = pos;
+      });
+      const val = (a) => (key === "xp" ? a.xp + " XP" : a[key] + " " + (a[key] === 1 ? "lição" : "lições"));
+      const me = list.find((a) => a.voce);
+      $("#rkSub").textContent =
+        "Turma " + data.turma + " · " + list.length + (list.length === 1 ? " aluno" : " alunos") + (me ? " · você está em " + me.pos + "º lugar" : "");
+      let out = '<div class="podium">';
+      list.slice(0, 3).forEach((a, i) => {
+        out +=
+          '<div class="podium-card p' +
+          (i + 1) +
+          (a.voce ? " me" : "") +
+          '"><span class="podium-pos">' +
+          a.pos +
+          'º</span><b class="podium-name">' +
+          esc(a.nome) +
+          (a.voce ? " <small>(você)</small>" : "") +
+          '</b><span class="podium-val">' +
+          esc(val(a)) +
+          '</span><span class="podium-sub">Nv ' +
+          levelInfo(a.xp).level +
+          " · " +
+          a.estrelas +
+          " ★</span></div>";
+      });
+      out += "</div>";
+      out +=
+        '<div class="tablewrap"><table class="table rank-table"><thead><tr><th>#</th><th>Aluno</th><th>Nível</th><th>XP</th><th>Python</th><th>Banco de Dados</th><th>Estrelas</th></tr></thead><tbody>';
+      list.forEach((a) => {
+        out +=
+          "<tr" +
+          (a.voce ? ' class="me"' : "") +
+          '><td class="mono">' +
+          a.pos +
+          "º</td><td>" +
+          esc(a.nome) +
+          (a.voce ? ' <span class="you-tag">você</span>' : "") +
+          '</td><td class="mono">' +
+          levelInfo(a.xp).level +
+          '</td><td class="mono' +
+          (key === "xp" ? " hl" : "") +
+          '">' +
+          a.xp +
+          '</td><td class="mono' +
+          (key === "py" ? " hl" : "") +
+          '">' +
+          a.py +
+          '</td><td class="mono' +
+          (key === "bd" ? " hl" : "") +
+          '">' +
+          a.bd +
+          '</td><td class="mono">' +
+          a.estrelas +
+          "</td></tr>";
+      });
+      out += "</tbody></table></div>";
+      out +=
+        '<p class="small muted rank-note">Ordenado por ' +
+        (key === "xp" ? "XP total" : "lições concluídas de " + (key === "py" ? "Python" : "Banco de Dados") + "; empate é decidido pelo XP") +
+        ". Aparece só o primeiro nome e a inicial do sobrenome. Atualiza sozinho a cada 30 segundos." +
+        (me ? "" : " Você ainda não aparece porque o seu progresso não foi salvo online.") +
+        "</p>";
+      body.innerHTML = out;
+    }
+    async function load() {
+      if (!location.hash.startsWith("#/ranking")) return clearInterval(RK_TIMER);
+      try {
+        const r = await fetch("api/ranking?turma=" + encodeURIComponent(P.turma) + "&nome=" + encodeURIComponent(P.name), { cache: "no-store" });
+        if (!r.ok) throw new Error(String(r.status));
+        data = await r.json();
+        render();
+      } catch (e) {
+        if (!data) body.innerHTML = '<section class="panel"><p class="muted">Não deu para carregar o ranking agora. Confira a internet e tente de novo.</p><button class="btn ghost small" id="rkRetry">Tentar de novo</button></section>';
+        const rb = $("#rkRetry");
+        if (rb) rb.onclick = load;
+      }
+    }
+    cloudCheck().then((on) => {
+      if (!location.hash.startsWith("#/ranking")) return;
+      if (!on) {
+        body.innerHTML =
+          '<section class="panel"><h2 class="h2">Ranking desligado</h2><p class="muted">O ranking usa o salvamento online, que não está ligado neste site. Sem ele, o progresso fica só em cada computador e não dá para comparar a turma.</p></section>';
+        return;
+      }
+      if (!P.turma) {
+        body.innerHTML = '<section class="panel"><p class="muted">Informe a sua turma no Perfil para ver o ranking.</p><a class="btn ghost small" href="#/perfil">Ir para o Perfil</a></section>';
+        return;
+      }
+      // salva antes, para a sua posição já aparecer atualizada
+      (CLOUD.state === "pending" ? cloudFlush() : Promise.resolve()).then(load);
+      RK_TIMER = setInterval(load, 30000);
+    });
+  }
+
   /* ================= Tela: perfil e entrega ================= */
   function viewPerfil() {
     const lv = levelInfo(P.xp);
@@ -2513,7 +2705,7 @@
         codeTotal++;
         if (a.status === "ok") codeOk++;
       }
-      if (a.status === "ok" && a.tries <= 1) firstTry++;
+      if (a.status === "ok" && a.tries <= 1 && !a.sawAnswer) firstTry++;
     });
     let h = '<div class="rep">';
     h += '<div class="rep-head"><div><div class="rep-eyebrow">Relatório de progresso · ' + SITE + "</div><h1>" + esc(p.name) + "</h1>";
@@ -2527,6 +2719,7 @@
       [firstTry, "acertos de primeira"],
       [codeOk + "/" + codeTotal, "códigos aprovados"],
       [helpTotals(p).helps, "ajudas usadas"],
+      [helpTotals(p).answers, "respostas explicadas vistas"],
       [helpTotals(p).pastes, "tentativas de colar"],
     ].forEach((s) => (h += "<div><b>" + esc(s[0]) + "</b><span>" + esc(s[1]) + "</span></div>"));
     h += "</div>";
@@ -2551,19 +2744,20 @@
           if (s.kind === "explain") return;
           const a = ans[stepKey(l.id, i)];
           if (!a) return;
-          const st = a.status ? STATUS_TXT[a.status] + (a.status === "ok" ? (a.tries <= 1 ? " de primeira" : " após " + a.tries + " tentativas") : "") : "Errou, não concluiu";
-          const cls = a.status === "ok" ? (a.tries <= 1 ? "ok" : "mid") : "bad";
+          const st = a.sawAnswer && a.status === "ok" ? "Concluiu depois de ver a resposta" : a.status ? STATUS_TXT[a.status] + (a.status === "ok" ? (a.tries <= 1 ? " de primeira" : " após " + a.tries + " tentativas") : "") : "Errou, não concluiu";
+          const cls = a.sawAnswer ? "mid" : a.status === "ok" ? (a.tries <= 1 ? "ok" : "mid") : "bad";
           h += '<div class="rep-item"><div class="rep-q"><span class="rep-kind">' + (KIND[s.kind] || "") + "</span> " + esc(stepLabel(s).replace(/\*\*|`/g, "")) + ' <span class="rep-tag ' + cls + '">' + esc(st) + "</span></div>";
           if (a.answer != null && a.answer !== "(viu a resposta)")
             h += (s.kind === "code" || s.kind === "order" ? '<pre class="rep-code">' : '<div class="rep-ans">Resposta: ') + esc(a.answer) + (s.kind === "code" || s.kind === "order" ? "</pre>" : "</div>");
           const hp = (p.help || {})[stepKey(l.id, i)];
-          if (s.kind === "code" && hp && (hp.hints || hp.lines || hp.pastes))
+          if (s.kind === "code" && hp && (hp.hints || hp.lines || hp.pastes || hp.answers))
             h +=
               '<div class="rep-help">Ajudas: ' +
               (hp.hints || 0) +
               " dica(s), " +
               (hp.lines || 0) +
               " linha(s) revelada(s)" +
+              (hp.answers ? ' · <span class="rep-tag mid">viu a resposta explicada</span>' : "") +
               (hp.pastes ? ' · <span class="rep-tag bad">tentou colar ' + hp.pastes + "x</span>" : "") +
               "</div>";
           if (a.wrong && a.wrong.length && s.kind !== "code" && s.kind !== "order")
@@ -2996,7 +3190,7 @@
     if ($("#tFilter")) $("#tFilter").onchange = (e) => ((TFILTER = e.target.value), viewProfessor());
     $("#tCsv").onclick = () => {
       const rows = [
-        ["Aluno", "Turma", "XP", "Nivel", "Licoes Python", "Licoes Banco de Dados", "Estrelas", "Exercicios respondidos", "Acertos de primeira", "Codigos aprovados", "Ajudas", "Tentativas de colar", "Ultima atividade"],
+        ["Aluno", "Turma", "XP", "Nivel", "Licoes Python", "Licoes Banco de Dados", "Estrelas", "Exercicios respondidos", "Acertos de primeira", "Codigos aprovados", "Ajudas", "Respostas vistas", "Tentativas de colar", "Ultima atividade"],
       ];
       shown.forEach((p) => {
         const s = summary(p);
@@ -3012,6 +3206,7 @@
           s.firstTry,
           s.codeOk + "/" + s.codeTotal,
           helpTotals(p).helps,
+          helpTotals(p).answers,
           helpTotals(p).pastes,
           fmtDate(p.updated),
         ]);
@@ -3021,7 +3216,7 @@
     };
     if (!TEACHER.length) return;
     let t =
-      '<div class="tablewrap"><table class="table admin"><thead><tr><th>Aluno</th><th>Turma</th><th>XP</th><th>Python</th><th>Banco de Dados</th><th>Estrelas</th><th>Acertos de primeira</th><th>Códigos aprovados</th><th>Ajudas</th><th>Tentou colar</th><th>Última atividade</th><th></th></tr></thead><tbody>';
+      '<div class="tablewrap"><table class="table admin"><thead><tr><th>Aluno</th><th>Turma</th><th>XP</th><th>Python</th><th>Banco de Dados</th><th>Estrelas</th><th>Acertos de primeira</th><th>Códigos aprovados</th><th>Ajudas</th><th>Viu resposta</th><th>Tentou colar</th><th>Última atividade</th><th></th></tr></thead><tbody>';
     shown.forEach((p) => {
       const i = TEACHER.indexOf(p);
       const s = summary(p);
@@ -3052,6 +3247,8 @@
         s.codeTotal +
         '</td><td class="mono">' +
         helpTotals(p).helps +
+        '</td><td class="mono">' +
+        helpTotals(p).answers +
         '</td><td class="mono' +
         (helpTotals(p).pastes ? " warn-cell" : "") +
         '">' +
@@ -3064,7 +3261,7 @@
         (TSRC ? '<span class="del-area" data-del="' + i + '"><button class="btn tiny ghost">Remover</button></span>' : "") +
         "</td></tr>";
     });
-    if (!shown.length) t += '<tr><td colspan="12" class="muted">Nenhum relatório desta turma.</td></tr>';
+    if (!shown.length) t += '<tr><td colspan="13" class="muted">Nenhum relatório desta turma.</td></tr>';
     $("#tTable").innerHTML = t + "</tbody></table></div>";
     $$("[data-del]").forEach((area) => {
       const i = Number(area.dataset.del);
@@ -3098,12 +3295,14 @@
   }
   function helpTotals(p) {
     let helps = 0,
-      pastes = 0;
+      pastes = 0,
+      answers = 0;
     Object.values(p.help || {}).forEach((x) => {
       helps += (x.hints || 0) + (x.lines || 0);
       pastes += x.pastes || 0;
+      answers += x.answers ? 1 : 0;
     });
-    return { helps, pastes };
+    return { helps, pastes, answers };
   }
   function summary(p) {
     let answered = 0,
@@ -3113,7 +3312,7 @@
     Object.values(p.answers || {}).forEach((a) => {
       if (!a.status) return;
       answered++;
-      if (a.status === "ok" && a.tries <= 1) firstTry++;
+      if (a.status === "ok" && a.tries <= 1 && !a.sawAnswer) firstTry++;
       if (a.kind === "code") {
         codeTotal++;
         if (a.status === "ok") codeOk++;
@@ -3131,6 +3330,7 @@
   }
   function route() {
     PY.stop();
+    clearInterval(RK_TIMER);
     loadFocus();
     const parts = location.hash.replace(/^#\/?/, "").split("/");
     const page = parts[0];
@@ -3140,6 +3340,7 @@
     if (page === "revisao") return viewRevisao();
     if (page === "lab") return viewLab();
     if (page === "perfil") return viewPerfil();
+    if (page === "ranking") return viewRanking();
     return viewTrilha();
   }
 

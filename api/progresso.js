@@ -56,10 +56,11 @@ module.exports = async (req, res) => {
         ["SET", key, json],
         ["SADD", db.K.turma(tk), nk],
         ["HSETNX", db.K.turmas, tk, turma],
+        ["HSET", db.K.placar(tk), nk, JSON.stringify(db.resumo(p))],
       ];
       const atk = b.turmaAntes ? db.turmaKey(b.turmaAntes) : "";
-      if (atk && atk !== tk) cmds.push(["DEL", db.K.aluno(atk, nk)], ["SREM", db.K.turma(atk), nk]);
-      for (const lk of await legacyKeys(tk)) if (lk !== atk) cmds.push(["DEL", db.K.aluno(lk, nk)], ["SREM", db.K.turma(lk), nk]);
+      if (atk && atk !== tk) cmds.push(["DEL", db.K.aluno(atk, nk)], ["SREM", db.K.turma(atk), nk], ["HDEL", db.K.placar(atk), nk]);
+      for (const lk of await legacyKeys(tk)) if (lk !== atk) cmds.push(["DEL", db.K.aluno(lk, nk)], ["SREM", db.K.turma(lk), nk], ["HDEL", db.K.placar(lk), nk]);
       await db.pipeline(cmds);
       return db.send(res, 200, { ok: true, updated: p.updated || 0 });
     }
