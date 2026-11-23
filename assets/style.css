@@ -709,3 +709,21 @@ details.others > summary:hover { color: var(--text); }
 .rank-note { margin-top: 10px; }
 @media (max-width: 640px) { .podium { grid-template-columns: 1fr; } .podium-card { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; } }
 @media (max-width: 560px) { .nav a { padding: 7px 9px; font-size: 14px; } }
+
+/* ---------- Ranking geral ---------- */
+.rk-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+@media (max-width: 760px) { .rk-controls { align-items: flex-start; } }
+.rk-h { margin-top: 8px; }
+.turma-race { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.race-row { display: grid; grid-template-columns: 2.2em minmax(110px, 200px) 1fr auto; grid-template-areas: "pos name bar val" "pos sub sub sub"; align-items: center; gap: 2px 12px; padding: 10px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line-2); }
+.race-row.me { border-color: var(--cyan); }
+.race-pos { grid-area: pos; color: var(--muted); }
+.race-row:first-child .race-pos { color: var(--amber); }
+.race-name { grid-area: name; font-family: var(--f-display); font-size: 17px; color: var(--text); }
+.race-bar { grid-area: bar; height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden; }
+.race-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--violet)); border-radius: 5px; }
+.race-val { grid-area: val; color: var(--cyan); }
+.race-sub { grid-area: sub; }
+.teacher-link { display: block; text-align: center; margin-top: 14px; font-size: 13px; color: var(--dim); }
+.teacher-link:hover { color: var(--muted); }
+.usermenu-pop .menu-teacher { color: var(--muted); font-size: 13px; }

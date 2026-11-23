@@ -855,7 +855,7 @@
         "</div>" +
         '<div class="save-state saved">' +
         (P.turma ? "Turma " + esc(P.turma) + " · " : "") +
-        (CLOUD.online ? "salvo online" : "salvo neste navegador") + '</div><a href="#/perfil">Perfil e entrega</a><button data-a="report">Baixar relatório</button><button data-a="logout">Sair</button>';
+        (CLOUD.online ? "salvo online" : "salvo neste navegador") + '</div><a href="#/perfil">Perfil e entrega</a><button data-a="report">Baixar relatório</button><a href="#/professor" class="menu-teacher">Área do professor</a><button data-a="logout">Sair</button>';
       $(".usermenu").appendChild(pop);
       pop.addEventListener("click", (ev) => {
         const a = ev.target.closest("[data-a]");
@@ -957,6 +957,7 @@
       '<label class="btn ghost block filebtn">Continuar de um arquivo de progresso<input type="file" id="importFile" accept=".html,.json,text/html,application/json" hidden></label>' +
       '<p class="small muted center-text">Trocou de computador? Carregue o relatório que você baixou antes.</p>' +
       "</div>" +
+      '<a href="#/professor" class="teacher-link">Área do professor</a>' +
       (storageOk ? "" : '<p class="form-error">Este navegador está bloqueando o salvamento. Use o botão de baixar relatório no fim da aula.</p>') +
       "</div>";
     $("#nameForm").onsubmit = (e) => {
@@ -2446,25 +2447,36 @@
     };
   }
 
-  /* ================= Tela: ranking da turma ================= */
+  /* ================= Tela: ranking ================= */
   let RK_TAB = "xp";
+  let RK_SCOPE = "todas";
   let RK_TIMER = null;
   const RK_TABS = [
     ["xp", "Geral"],
     ["py", "Python"],
     ["bd", "Banco de Dados"],
   ];
+  const RK_SCOPES = [
+    ["todas", "Todas as turmas"],
+    ["turma", "Minha turma"],
+  ];
   function viewRanking() {
     clearInterval(RK_TIMER);
+    const tabs = (list, cur, attr) =>
+      '<div class="course-tabs small-tabs" role="tablist">' +
+      list.map((t) => '<button class="course-tab' + (t[0] === cur ? " on" : "") + '" data-' + attr + '="' + t[0] + '" role="tab">' + t[1] + "</button>").join("") +
+      "</div>";
     let h =
-      '<div class="wrap page"><div class="lab-head"><div><h1 class="h1">Ranking da turma</h1><p class="muted" id="rkSub">' +
-      (P.turma ? "Turma " + esc(P.turma) : "") +
-      '</p></div><div class="course-tabs small-tabs" role="tablist">' +
-      RK_TABS.map((t) => '<button class="course-tab' + (t[0] === RK_TAB ? " on" : "") + '" data-rk="' + t[0] + '" role="tab">' + t[1] + "</button>").join("") +
+      '<div class="wrap page"><div class="lab-head"><div><h1 class="h1">Ranking</h1><p class="muted" id="rkSub"></p></div>' +
+      '<div class="rk-controls">' +
+      tabs(RK_SCOPES, RK_SCOPE, "rks") +
+      tabs(RK_TABS, RK_TAB, "rk") +
       '</div></div><div id="rkBody"><p class="muted">Carregando...</p></div></div>';
     const main = shell("ranking", h);
     $$("[data-rk]", main).forEach((b) => (b.onclick = () => ((RK_TAB = b.dataset.rk), viewRanking())));
+    $$("[data-rks]", main).forEach((b) => (b.onclick = () => ((RK_SCOPE = b.dataset.rks), viewRanking())));
     const body = $("#rkBody", main);
+    const todas = RK_SCOPE === "todas";
     let data = null;
     function render() {
       if (!data) return;
@@ -2473,10 +2485,10 @@
         .slice()
         .sort((a, b) => (key === "xp" ? b.xp - a.xp : b[key] - a[key] || b.xp - a.xp) || a.nome.localeCompare(b.nome, "pt-BR"));
       if (!list.length) {
-        body.innerHTML = '<section class="panel"><p class="muted">Ninguém da turma salvou progresso ainda. Assim que alguém fizer uma lição, aparece aqui.</p></section>';
+        body.innerHTML = '<section class="panel"><p class="muted">Ninguém ' + (todas ? "" : "da turma ") + "salvou progresso ainda. Assim que alguém fizer uma lição, aparece aqui.</p></section>";
+        $("#rkSub").textContent = todas ? "Todas as turmas" : "Turma " + (P.turma || "");
         return;
       }
-      // empate divide a posição
       let pos = 0,
         last = null;
       list.forEach((a, i) => {
@@ -2488,8 +2500,39 @@
       const val = (a) => (key === "xp" ? a.xp + " XP" : a[key] + " " + (a[key] === 1 ? "lição" : "lições"));
       const me = list.find((a) => a.voce);
       $("#rkSub").textContent =
-        "Turma " + data.turma + " · " + list.length + (list.length === 1 ? " aluno" : " alunos") + (me ? " · você está em " + me.pos + "º lugar" : "");
-      let out = '<div class="podium">';
+        (todas ? data.turmas.length + (data.turmas.length === 1 ? " turma" : " turmas") : "Turma " + data.turma) +
+        " · " +
+        list.length +
+        (list.length === 1 ? " aluno" : " alunos") +
+        (me ? " · você está em " + me.pos + "º lugar" : "");
+      let out = "";
+      if (todas && data.turmas.length > 1) {
+        out += '<h2 class="h2 section rk-h">Disputa entre turmas <span class="muted small">pela média de XP por aluno</span></h2><div class="turma-race">';
+        const top = Math.max(1, ...data.turmas.map((t) => t.media));
+        data.turmas.forEach((t, i) => {
+          const mine = P.turma && cloudKey(t.nome) === cloudKey(P.turma);
+          out +=
+            '<div class="race-row' +
+            (mine ? " me" : "") +
+            '"><span class="race-pos mono">' +
+            (i + 1) +
+            'º</span><span class="race-name">' +
+            esc(t.nome) +
+            (mine ? ' <span class="you-tag">sua turma</span>' : "") +
+            '</span><span class="race-bar"><i style="width:' +
+            Math.round((t.media / top) * 100) +
+            '%"></i></span><span class="race-val mono">' +
+            t.media +
+            ' XP</span><span class="race-sub small muted">' +
+            t.alunos +
+            (t.alunos === 1 ? " aluno" : " alunos") +
+            " · " +
+            t.licoes +
+            " lições</span></div>";
+        });
+        out += "</div>";
+      }
+      out += '<h2 class="h2 section rk-h">Alunos</h2><div class="podium">';
       list.slice(0, 3).forEach((a, i) => {
         out +=
           '<div class="podium-card p' +
@@ -2502,7 +2545,9 @@
           (a.voce ? " <small>(você)</small>" : "") +
           '</b><span class="podium-val">' +
           esc(val(a)) +
-          '</span><span class="podium-sub">Nv ' +
+          '</span><span class="podium-sub">' +
+          (todas ? esc(a.turma) + " · " : "") +
+          "Nv " +
           levelInfo(a.xp).level +
           " · " +
           a.estrelas +
@@ -2510,7 +2555,9 @@
       });
       out += "</div>";
       out +=
-        '<div class="tablewrap"><table class="table rank-table"><thead><tr><th>#</th><th>Aluno</th><th>Nível</th><th>XP</th><th>Python</th><th>Banco de Dados</th><th>Estrelas</th></tr></thead><tbody>';
+        '<div class="tablewrap"><table class="table rank-table"><thead><tr><th>#</th><th>Aluno</th>' +
+        (todas ? "<th>Turma</th>" : "") +
+        "<th>Nível</th><th>XP</th><th>Python</th><th>Banco de Dados</th><th>Estrelas</th></tr></thead><tbody>";
       list.forEach((a) => {
         out +=
           "<tr" +
@@ -2520,7 +2567,9 @@
           "º</td><td>" +
           esc(a.nome) +
           (a.voce ? ' <span class="you-tag">você</span>' : "") +
-          '</td><td class="mono">' +
+          "</td>" +
+          (todas ? "<td>" + esc(a.turma) + "</td>" : "") +
+          '<td class="mono">' +
           levelInfo(a.xp).level +
           '</td><td class="mono' +
           (key === "xp" ? " hl" : "") +
@@ -2550,7 +2599,10 @@
     async function load() {
       if (!location.hash.startsWith("#/ranking")) return clearInterval(RK_TIMER);
       try {
-        const r = await fetch("api/ranking?turma=" + encodeURIComponent(P.turma) + "&nome=" + encodeURIComponent(P.name), { cache: "no-store" });
+        const r = await fetch(
+          "api/ranking?escopo=" + (todas ? "todas" : "turma") + "&turma=" + encodeURIComponent(P.turma || "") + "&nome=" + encodeURIComponent(P.name),
+          { cache: "no-store" }
+        );
         if (!r.ok) throw new Error(String(r.status));
         data = await r.json();
         render();
@@ -2564,14 +2616,13 @@
       if (!location.hash.startsWith("#/ranking")) return;
       if (!on) {
         body.innerHTML =
-          '<section class="panel"><h2 class="h2">Ranking desligado</h2><p class="muted">O ranking usa o salvamento online, que não está ligado neste site. Sem ele, o progresso fica só em cada computador e não dá para comparar a turma.</p></section>';
+          '<section class="panel"><h2 class="h2">Ranking desligado</h2><p class="muted">O ranking usa o salvamento online, que não está ligado neste site. Sem ele, o progresso fica só em cada computador e não dá para comparar as turmas.</p></section>';
         return;
       }
-      if (!P.turma) {
-        body.innerHTML = '<section class="panel"><p class="muted">Informe a sua turma no Perfil para ver o ranking.</p><a class="btn ghost small" href="#/perfil">Ir para o Perfil</a></section>';
+      if (!todas && !P.turma) {
+        body.innerHTML = '<section class="panel"><p class="muted">Informe a sua turma no Perfil para ver o ranking da turma.</p><a class="btn ghost small" href="#/perfil">Ir para o Perfil</a></section>';
         return;
       }
-      // salva antes, para a sua posição já aparecer atualizada
       (CLOUD.state === "pending" ? cloudFlush() : Promise.resolve()).then(load);
       RK_TIMER = setInterval(load, 30000);
     });

@@ -94,9 +94,15 @@ Nos exercícios de código (Python e SQL), depois que o aluno usa todas as dicas
 
 Ver a resposta não resolve o exercício sozinho: o aluno ainda digita (colar continua bloqueado) e verifica. O exercício vale só 1 XP, volta na Revisão e aparece no relatório e na Área do professor (coluna **Viu resposta**). As explicações são geradas automaticamente a partir da solução; `node ferramentas/verificar-conteudo.js` avisa se alguma linha ficar sem explicação.
 
-## Ranking da turma
+## Ranking
 
-Com o salvamento online ligado, o menu **Ranking** mostra a turma do aluno ordenada por XP, e também por lições de Python ou de Banco de Dados. Aparece só o primeiro nome e a inicial do sobrenome (Ana Lima → Ana L.), e a tela atualiza sozinha a cada 30 segundos. Sem o banco online, a tela avisa que o ranking está desligado.
+Com o salvamento online ligado, o menu **Ranking** abre em **Todas as turmas**:
+
+- **Disputa entre turmas**: as turmas ordenadas pela média de XP por aluno (média, para turma pequena não sair perdendo).
+- **Alunos**: todos os alunos de todas as turmas, com a coluna Turma. Dá para ordenar por XP (Geral), por lições de Python ou por lições de Banco de Dados.
+- **Minha turma** mostra só a turma do aluno.
+
+Aparece só o primeiro nome e a inicial do sobrenome (Ana Lima → Ana L.), e a tela atualiza sozinha a cada 30 segundos. Um aluno de teste, ou uma turma de teste como "Professor", sai do ranking quando você remove esse aluno na Área do professor.
 
 ## Exercícios de código: sem colar
 
@@ -109,7 +115,7 @@ Com o salvamento online ligado, o menu **Ranking** mostra a turma do aluno orden
 
 ## Área do professor
 
-Entre em `seusite/#/professor` (o link não aparece para os alunos: salve nos favoritos). Com o salvamento online ligado, a área inteira pede a senha `PROFESSOR_SENHA`. Selecione ou arraste vários relatórios de uma vez: aparece uma tabela com turma, lições de Python e de Banco de Dados, ajudas usadas e tentativas de colar, com filtro por turma, o botão **Ver respostas** de cada aluno e **Baixar planilha (CSV)** para abrir no Excel ou Google Planilhas. Os arquivos são lidos só no seu navegador.
+Entre em `seusite/#/professor`, ou clique em **Área do professor**, discreto no fim da tela inicial e no menu da bolinha com a inicial. Com o salvamento online ligado, a área inteira pede a senha `PROFESSOR_SENHA`. Selecione ou arraste vários relatórios de uma vez: aparece uma tabela com turma, lições de Python e de Banco de Dados, ajudas usadas e tentativas de colar, com filtro por turma, o botão **Ver respostas** de cada aluno e **Baixar planilha (CSV)** para abrir no Excel ou Google Planilhas. Os arquivos são lidos só no seu navegador.
 
 ## Mudar o conteúdo
 
