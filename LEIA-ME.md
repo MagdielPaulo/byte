@@ -92,7 +92,7 @@ Nos exercícios de código (Python e SQL), depois que o aluno usa todas as dicas
 - Python: a árvore segue o recuo (o que está dentro do `def`, do `if`, do `for`). Cada linha diz o que faz, e os operadores novos (`%`, `//`, `and`...) ganham uma nota.
 - SQL: cada comando se abre nas suas cláusulas (SELECT, FROM, WHERE...) e, no CREATE TABLE, em cada coluna com suas restrições.
 
-Ver a resposta não resolve o exercício sozinho: o aluno ainda digita (colar continua bloqueado) e verifica. O exercício vale só 1 XP, volta na Revisão e aparece no relatório e na Área do professor (coluna **Viu resposta**). As explicações são geradas automaticamente a partir da solução; `node ferramentas/verificar-conteudo.js` avisa se alguma linha ficar sem explicação.
+Só existe nos exercícios de código. Nas perguntas, lacunas e montagens não tem botão de ver resposta: o aluno tenta de novo (as opções erradas ficam marcadas, então ele sempre chega lá). Ver a resposta não resolve o exercício sozinho: o aluno ainda digita (colar continua bloqueado) e verifica. O exercício vale só 1 XP, volta na Revisão e aparece no relatório e na Área do professor (coluna **Viu resposta**). As explicações são geradas automaticamente a partir da solução; `node ferramentas/verificar-conteudo.js` avisa se alguma linha ficar sem explicação.
 
 ## Ranking
 

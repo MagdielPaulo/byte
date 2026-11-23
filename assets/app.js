@@ -1374,7 +1374,7 @@
       });
       h += "</div>";
       if (state === "bad")
-        h += feedback("bad", "Ainda não", rich(s.options[picked].why), '<button class="btn" data-a="retry">Tentar de novo</button><button class="btn ghost" data-a="reveal">Ver resposta</button>');
+        h += feedback("bad", "Ainda não", rich(s.options[picked].why), '<button class="btn" data-a="retry">Tentar de novo</button>');
       if (done)
         h += feedback(
           state === "ok" ? "ok" : "info",
@@ -1452,7 +1452,7 @@
           "bad",
           "Tem lacuna errada",
           "As lacunas em vermelho não estão certas. As verdes ficam quando você tentar de novo.",
-          '<button class="btn" data-a="retry">Tentar de novo</button><button class="btn ghost" data-a="reveal">Ver resposta</button>'
+          '<button class="btn" data-a="retry">Tentar de novo</button>'
         );
       if (done) h += feedback(state === "ok" ? "ok" : "info", state === "ok" ? "Certo!" : "Esta é a resposta", rich(s.explain), '<button class="btn primary lg" data-a="next">Continuar</button>');
       el.innerHTML = h + "</div>";
@@ -1558,7 +1558,7 @@
           : !s.lines.includes(bl.text)
             ? "A linha " + (badAt + 1) + ' não faz parte deste programa. Tem uma linha "pegadinha" nas opções.'
             : "A linha " + (badAt + 1) + " está fora do lugar. As de cima estão certas.";
-        h += feedback("bad", "Quase", esc(msg), '<button class="btn" data-a="retry">Tentar de novo</button><button class="btn ghost" data-a="reveal">Ver resposta</button>');
+        h += feedback("bad", "Quase", esc(msg), '<button class="btn" data-a="retry">Tentar de novo</button>');
       }
       if (done) h += feedback(state === "ok" ? "ok" : "info", state === "ok" ? "Programa montado!" : "Esta é a ordem certa", rich(s.explain), '<button class="btn primary lg" data-a="next">Continuar</button>');
       el.innerHTML = h + "</div>";
