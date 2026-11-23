@@ -317,7 +317,7 @@
 
   /* ================= Salvamento online (quando o site está na Vercel com o banco conectado) ================= */
   const CLOUD = { online: false, checked: false, professor: false, state: "off", timer: null, saving: false, again: false, turmaAntes: null, checking: null };
-  /** Mesma regra do servidor: "1º ano", "primeiro ano" e "1ano" são a mesma turma */
+  /** Mesma regra do servidor: "1 info A", "1° A INF" e "1a" são a mesma turma; "2 TEC" e "2ANO" também */
   function cloudKey(s) {
     const base = String(s || "")
       .normalize("NFD")
@@ -329,9 +329,46 @@
       .replace(/primeir[oa]/g, "1")
       .replace(/segund[oa]/g, "2")
       .replace(/terceir[oa]/g, "3")
-      .replace(/quart[oa]/g, "4")
-      .replace(/anos?|series?|turma/g, "");
+      .replace(/informatica|infor|info|inf|tecnico|tech|tec|anos?|series?|turma/g, "");
+    const m = k.match(/^(\d)([a-z])?\2?$/);
+    if (m) return m[1] + (m[2] || "");
     return k || base;
+  }
+  /** Campo de turma: lista das turmas oficiais (com o banco online) ou campo de texto */
+  function turmaControl(id, value, opts) {
+    opts = opts || {};
+    const ofs = CLOUD.oficiais || [];
+    if (ofs.length) {
+      const sel = ofs.find((o) => value && cloudKey(o) === cloudKey(value));
+      return (
+        '<select id="' +
+        id +
+        '"' +
+        (opts.required ? " required" : "") +
+        '><option value=""' +
+        (sel ? "" : " selected") +
+        ' disabled>Escolha a sua turma</option>' +
+        ofs.map((o) => '<option value="' + esc(o) + '"' + (o === sel ? " selected" : "") + ">" + esc(o) + "</option>").join("") +
+        "</select>"
+      );
+    }
+    return (
+      '<input id="' +
+      id +
+      '" maxlength="30" autocomplete="off" list="' +
+      id +
+      'List" placeholder="Ex.: 2º A" value="' +
+      esc(value || "") +
+      '"' +
+      (opts.required ? " required" : "") +
+      '><datalist id="' +
+      id +
+      'List">' +
+      knownTurmas()
+        .map((t) => '<option value="' + esc(t) + '"></option>')
+        .join("") +
+      "</datalist>"
+    );
   }
   function cloudCheck() {
     if (CLOUD.checking) return CLOUD.checking;
@@ -349,6 +386,7 @@
         CLOUD.online = Boolean(j && j.online);
         CLOUD.professor = Boolean(j && j.professor);
         CLOUD.turmas = (j && j.turmas) || [];
+        CLOUD.oficiais = (j && j.oficiais) || [];
       } catch (e) {
         CLOUD.online = false;
       }
@@ -403,6 +441,13 @@
         setCloudState("saved");
       } else if (r.ok) {
         CLOUD.turmaAntes = null;
+        const j = await r.json().catch(() => ({}));
+        // o servidor guarda com o nome oficial da turma ("1 info A" vira "1º A")
+        if (j.turma && P === me && P.turma !== j.turma) {
+          P.turma = j.turma;
+          saveDB();
+          renderHud();
+        }
         setCloudState("saved");
       } else throw new Error(String(r.status));
     } catch (e) {
@@ -930,13 +975,9 @@
       '<p class="lead">Python e Banco de Dados. Lições curtas, exercícios corrigidos na hora, XP e conquistas.</p></div>' +
       '<div class="panel auth-card">' +
       '<form class="form" id="nameForm"><label class="field"><span>Seu nome</span><input id="nameInput" maxlength="40" autocomplete="off" placeholder="Nome e sobrenome" required></label>' +
-      '<label class="field"><span>Sua turma</span><input id="turmaInput" maxlength="30" autocomplete="off" list="turmaList" placeholder="Ex.: 2º A" value="' +
-      esc(turmaDefault) +
-      '"></label><datalist id="turmaList">' +
-      knownTurmas()
-        .map((t) => '<option value="' + esc(t) + '"></option>')
-        .join("") +
-      "</datalist>" +
+      '<label class="field"><span>Sua turma</span><span id="turmaSlot">' +
+      turmaControl("turmaInput", turmaDefault) +
+      "</span></label>" +
       '<p class="small muted" id="welcomeNote">' +
       (CLOUD.online ? "Já usou antes? Digite o mesmo nome e a mesma turma e você continua de onde parou, em qualquer computador ou celular. Tudo é salvo online sozinho." : "Use sempre o mesmo nome. Nome e turma aparecem no relatório que você entrega.") +
       "</p>" +
@@ -997,7 +1038,10 @@
         failed = true;
       }
     if (remote && remote.name) n = remote.name; // mantém a grafia do primeiro acesso
-    if (remote && remote.turma) t = remote.turma;
+    // turma oficial escolhida na lista vale mais do que o jeito antigo de escrever
+    const oficial = (CLOUD.oficiais || []).find((o) => cloudKey(o) === cloudKey(t));
+    if (oficial) t = oficial;
+    else if (remote && remote.turma) t = remote.turma;
     const localKey = profileKey(n);
     const local = localKey ? DB.profiles[localKey] : null;
     const sameStudent = local && (!local.turma || cloudKey(local.turma) === cloudKey(t));
@@ -1148,7 +1192,7 @@
         "</span></div>";
     if (!P.turma)
       h +=
-        '<form class="turma-ask" id="turmaAsk"><span>Qual é a sua turma?</span><input id="turmaAskIn" maxlength="30" placeholder="ex.: 2º A" required><button class="btn small">Salvar</button></form>';
+        '<form class="turma-ask" id="turmaAsk"><span>Qual é a sua turma?</span>' + turmaControl("turmaAskIn", "", { required: true }) + '<button class="btn small">Salvar</button></form>';
     h += '<p class="small muted">Todas as lições estão abertas: escolha por onde começar.</p>';
     h += '</div><div class="dash-side">';
     h +=
@@ -2507,28 +2551,23 @@
         (me ? " · você está em " + me.pos + "º lugar" : "");
       let out = "";
       if (todas && data.turmas.length > 1) {
-        out += '<h2 class="h2 section rk-h">Disputa entre turmas <span class="muted small">pela média de XP por aluno</span></h2><div class="turma-race">';
-        const top = Math.max(1, ...data.turmas.map((t) => t.media));
+        out += '<div class="turma-race" aria-label="Disputa entre turmas, pela média de XP por aluno">';
         data.turmas.forEach((t, i) => {
           const mine = P.turma && cloudKey(t.nome) === cloudKey(P.turma);
           out +=
-            '<div class="race-row' +
+            '<div class="race-card' +
+            (i === 0 ? " first" : "") +
             (mine ? " me" : "") +
             '"><span class="race-pos mono">' +
             (i + 1) +
-            'º</span><span class="race-name">' +
+            'º</span><b class="race-name">' +
             esc(t.nome) +
-            (mine ? ' <span class="you-tag">sua turma</span>' : "") +
-            '</span><span class="race-bar"><i style="width:' +
-            Math.round((t.media / top) * 100) +
-            '%"></i></span><span class="race-val mono">' +
+            '</b><span class="race-val mono">' +
             t.media +
-            ' XP</span><span class="race-sub small muted">' +
+            ' XP</span><span class="race-sub">média · ' +
             t.alunos +
             (t.alunos === 1 ? " aluno" : " alunos") +
-            " · " +
-            t.licoes +
-            " lições</span></div>";
+            "</span></div>";
         });
         out += "</div>";
       }
@@ -2642,13 +2681,9 @@
       lv.level +
       " · " +
       lv.title +
-      '</p></div><form class="turma-edit" id="turmaForm"><label class="field inline"><span>Turma</span><input id="turmaEdit" maxlength="30" list="turmaList2" value="' +
-      esc(P.turma || "") +
-      '" placeholder="ex.: 2º A"><datalist id="turmaList2">' +
-      knownTurmas()
-        .map((t) => '<option value="' + esc(t) + '">')
-        .join("") +
-      '</datalist></label><button class="btn ghost small">Salvar</button></form></section>';
+      '</p></div><form class="turma-edit" id="turmaForm"><label class="field inline"><span>Turma</span>' +
+      turmaControl("turmaEdit", P.turma || "") +
+      '</label><button class="btn ghost small">Salvar</button></form></section>';
     h +=
       '<section class="panel deliver-big"><div><p class="eyebrow">Entrega</p><h2 class="h2">Enviar para o professor</h2><p class="muted">O relatório é um arquivo com seu progresso, as respostas de cada exercício e os códigos que você escreveu. Baixe e envie do jeito que o professor pedir.</p></div><button class="btn primary lg" id="reportBig">Baixar relatório</button></section>';
     h += '<section class="statgrid">';
@@ -3019,6 +3054,8 @@
     }
   })();
   let TTURMAS = null;
+  let TOFS = [];
+  let TEDIT_OFS = false;
   let TSRC = null;
   let TLOADING = false;
   async function profApi(qs, method) {
@@ -3038,7 +3075,9 @@
     TLOADING = true;
     if (!TTURMAS && location.hash.indexOf("#/professor") === 0) app().innerHTML = professorLock();
     try {
-      TTURMAS = (await profApi("")).turmas;
+      const j = await profApi("");
+      TTURMAS = j.turmas;
+      TOFS = j.oficiais || [];
     } catch (e) {
       TTURMAS = null;
       toast("error", "Não deu para abrir as turmas", e.message);
@@ -3093,10 +3132,101 @@
       ).join("") +
       "</div>";
     if (TSRC) h += '<p class="small muted">Mostrando a turma <b>' + esc(TSRC.nome) + "</b> · atualizado às " + new Date(TSRC.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) + "</p>";
+    h += organizeHtml();
     return h + "</section>";
+  }
+  /** Turmas oficiais e o painel que junta as turmas escritas de jeitos diferentes */
+  function organizeHtml() {
+    let h =
+      '<div class="ofs-row"><span class="small muted">Turmas oficiais (os alunos escolhem uma delas ao entrar):</span> ' +
+      (TEDIT_OFS
+        ? '<input id="ofsIn" class="input-sm" value="' + esc(TOFS.join(", ")) + '" aria-label="Turmas oficiais, separadas por vírgula"> <button class="btn tiny primary" id="ofsSave">Salvar</button> <button class="btn tiny ghost" id="ofsCancel">Cancelar</button>'
+        : TOFS.map((o) => '<span class="ofs-chip">' + esc(o) + "</span>").join("") + ' <button class="btn tiny ghost" id="ofsEdit">Editar</button>') +
+      "</div>";
+    const fora = (TTURMAS || []).filter((t) => !t.certa);
+    if (!fora.length) return h;
+    const def = (t) => t.oficial || (/professor/i.test(t.nome) ? "__apagar__" : "__manter__");
+    h +=
+      '<div class="organize"><h3 class="h3">Organizar turmas</h3><p class="small muted">Os alunos escreveram a turma de jeitos diferentes. Confira para onde cada uma vai e clique em Organizar. Ninguém perde progresso: os alunos são juntados na turma oficial. Se o mesmo aluno aparecer em duas, fica o progresso mais recente.</p>' +
+      '<div class="tablewrap"><table class="table org-table"><thead><tr><th>Como foi escrita</th><th>Alunos</th><th>Vai para</th></tr></thead><tbody>' +
+      fora
+        .map(
+          (t) =>
+            "<tr><td>" +
+            esc(t.nome) +
+            '</td><td class="mono">' +
+            t.alunos +
+            '</td><td><select data-org="' +
+            esc(t.chave) +
+            '">' +
+            TOFS.map((o) => '<option value="' + esc(o) + '"' + (def(t) === o ? " selected" : "") + ">" + esc(o) + "</option>").join("") +
+            '<option value="__manter__"' +
+            (def(t) === "__manter__" ? " selected" : "") +
+            '>Deixar como está</option><option value="__apagar__"' +
+            (def(t) === "__apagar__" ? " selected" : "") +
+            ">Apagar estes alunos</option></select></td></tr>"
+        )
+        .join("") +
+      '</tbody></table></div><div class="row wrap-row" id="orgArea"><button class="btn primary" id="orgGo">Organizar</button></div></div>';
+    return h;
+  }
+  function bindOrganize() {
+    const ed = $("#ofsEdit");
+    if (ed) ed.onclick = () => ((TEDIT_OFS = true), viewProfessor());
+    const cc = $("#ofsCancel");
+    if (cc) cc.onclick = () => ((TEDIT_OFS = false), viewProfessor());
+    const sv = $("#ofsSave");
+    if (sv)
+      sv.onclick = async () => {
+        const lista = $("#ofsIn").value.split(",").map((x) => x.trim()).filter(Boolean);
+        try {
+          const r = await fetch("api/professor", { method: "POST", headers: { "x-senha": TPASS, "Content-Type": "application/json" }, body: JSON.stringify({ acao: "oficiais", lista }) });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.erro || r.status);
+          TEDIT_OFS = false;
+          toast("info", "Turmas oficiais salvas", lista.join(", "));
+          loadTurmas();
+        } catch (e) {
+          toast("error", "Não deu para salvar", e.message);
+        }
+      };
+    const go = $("#orgGo");
+    if (!go) return;
+    go.onclick = () => {
+      const plano = $$("[data-org]")
+        .map((s) => ({ chave: s.dataset.org, destino: s.value }))
+        .filter((x) => x.destino !== "__manter__");
+      const apagar = plano.filter((x) => x.destino === "__apagar__");
+      const nAp = apagar.reduce((a, x) => a + ((TTURMAS.find((t) => t.chave === x.chave) || {}).alunos || 0), 0);
+      const area = $("#orgArea");
+      if (!plano.length) return toast("info", "Nada para organizar", "Todas estão marcadas como Deixar como está.");
+      area.innerHTML =
+        '<span class="small">Juntar ' +
+        (plano.length - apagar.length) +
+        " turma(s) nas oficiais" +
+        (nAp ? " e <b>apagar " + nAp + " aluno(s)</b>" : "") +
+        '. Confirma?</span> <button class="btn small primary" id="orgYes">Sim, organizar</button> <button class="btn small ghost" id="orgNo">Cancelar</button>';
+      $("#orgNo").onclick = viewProfessor;
+      $("#orgYes").onclick = async () => {
+        area.innerHTML = '<span class="small muted">Organizando...</span>';
+        try {
+          const r = await fetch("api/professor", { method: "POST", headers: { "x-senha": TPASS, "Content-Type": "application/json" }, body: JSON.stringify({ acao: "organizar", plano }) });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.erro || r.status);
+          toast("info", "Turmas organizadas", j.movidos + " aluno(s) juntados" + (j.apagados ? ", " + j.apagados + " apagado(s)" : "") + ".");
+          TEACHER = [];
+          TSRC = null;
+          loadTurmas();
+        } catch (e) {
+          toast("error", "Não deu para organizar", e.message);
+          viewProfessor();
+        }
+      };
+    };
   }
   function bindOnline() {
     if (!CLOUD.online) return;
+    bindOrganize();
     const pf = $("#passForm");
     if (pf)
       pf.onsubmit = (e) => {
@@ -3405,8 +3535,8 @@
     if (!on) return;
     const note = $("#welcomeNote");
     if (note) note.textContent = "Já usou antes? Digite o mesmo nome e a mesma turma e você continua de onde parou, em qualquer computador ou celular. Tudo é salvo online sozinho.";
-    const dl = $("#turmaList");
-    if (dl) dl.innerHTML = knownTurmas().map((t) => '<option value="' + esc(t) + '"></option>').join("");
+    const slot = $("#turmaSlot");
+    if (slot) slot.innerHTML = turmaControl("turmaInput", $("#turmaInput") ? $("#turmaInput").value : "");
     cloudSync();
   });
   // carrega o Python em segundo plano

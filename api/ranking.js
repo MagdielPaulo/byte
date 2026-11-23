@@ -40,31 +40,42 @@ module.exports = async (req, res) => {
     const minhaTk = db.turmaKey(q.turma);
     const eu = db.keyOf(q.nome);
     const [flat] = await db.pipeline([["HGETALL", db.K.turmas]]);
-    const nomes = {};
-    for (let i = 0; i < (flat || []).length; i += 2) nomes[flat[i]] = flat[i + 1];
-    let chaves;
-    if (q.escopo === "todas") chaves = Object.keys(nomes);
+    const ofs = await db.oficiais();
+    // agrupa as turmas escritas de jeitos diferentes ("1 info A", "1° A INF") numa só
+    const grupos = {};
+    for (let i = 0; i < (flat || []).length; i += 2) {
+      const tk = flat[i];
+      const nome = flat[i + 1];
+      const c = db.turmaKey(nome);
+      if (!grupos[c]) grupos[c] = { nome: db.oficialDe(c, ofs) || nome, chaves: [] };
+      grupos[c].chaves.push(tk);
+    }
+    let alvo;
+    if (q.escopo === "todas") alvo = Object.keys(grupos);
     else {
       if (!minhaTk) return db.send(res, 400, { erro: "Informe a turma" });
-      chaves = [minhaTk];
+      alvo = grupos[minhaTk] ? [minhaTk] : [];
     }
     const alunos = [];
     const turmas = [];
-    for (const tk of chaves) {
-      const lista = await placarDaTurma(tk);
+    for (const c of alvo) {
+      const g = grupos[c];
+      const porAluno = {};
+      for (const tk of g.chaves) for (const r of await placarDaTurma(tk)) if (!porAluno[r.nk] || r.atualizado > porAluno[r.nk].atualizado) porAluno[r.nk] = r;
+      const lista = Object.values(porAluno);
       if (!lista.length) continue;
-      const nomeTurma = nomes[tk] || q.turma || tk;
       const xp = lista.reduce((a, r) => a + r.xp, 0);
-      turmas.push({ nome: nomeTurma, alunos: lista.length, xp, media: Math.round(xp / lista.length), licoes: lista.reduce((a, r) => a + r.py + r.bd, 0) });
+      // a disputa entre turmas mostra só as turmas oficiais ("Professor" e testes ficam de fora)
+      if (db.oficialDe(c, ofs)) turmas.push({ nome: g.nome, alunos: lista.length, xp, media: Math.round(xp / lista.length), licoes: lista.reduce((a, r) => a + r.py + r.bd, 0) });
       lista.forEach((r) => {
-        const voce = r.nk === eu && tk === minhaTk;
+        const voce = r.nk === eu && c === minhaTk;
         delete r.nk;
-        alunos.push(Object.assign(r, { turma: nomeTurma, voce }));
+        alunos.push(Object.assign(r, { turma: g.nome, voce }));
       });
     }
     alunos.sort((a, b) => b.xp - a.xp || a.nome.localeCompare(b.nome, "pt-BR"));
     turmas.sort((a, b) => b.media - a.media || b.xp - a.xp);
-    db.send(res, 200, { escopo: q.escopo === "todas" ? "todas" : "turma", turma: nomes[minhaTk] || q.turma || "", turmas, alunos });
+    db.send(res, 200, { escopo: q.escopo === "todas" ? "todas" : "turma", turma: (grupos[minhaTk] && grupos[minhaTk].nome) || q.turma || "", turmas, alunos });
   } catch (e) {
     db.send(res, 500, { erro: String(e.message || e) });
   }

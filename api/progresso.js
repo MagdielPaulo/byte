@@ -36,11 +36,14 @@ module.exports = async (req, res) => {
     if (req.method === "POST") {
       const b = await db.readBody(req);
       const nome = db.clean(b.nome, 40);
-      const turma = db.clean(b.turma, 30);
+      let turma = db.clean(b.turma, 30);
       const p = b.progresso;
       const tk = db.turmaKey(turma);
       const nk = db.keyOf(nome);
       if (!tk || !nk || !p || typeof p !== "object" || p.app !== "byte-a-byte") return db.send(res, 400, { erro: "Dados inválidos" });
+      // "1 info A" é salvo como a turma oficial "1º A"
+      const oficial = db.oficialDe(tk, await db.oficiais());
+      if (oficial) turma = oficial;
       p.name = nome;
       p.turma = turma;
       const json = JSON.stringify(p);
@@ -55,14 +58,14 @@ module.exports = async (req, res) => {
       const cmds = [
         ["SET", key, json],
         ["SADD", db.K.turma(tk), nk],
-        ["HSETNX", db.K.turmas, tk, turma],
+        [oficial ? "HSET" : "HSETNX", db.K.turmas, tk, turma],
         ["HSET", db.K.placar(tk), nk, JSON.stringify(db.resumo(p))],
       ];
       const atk = b.turmaAntes ? db.turmaKey(b.turmaAntes) : "";
       if (atk && atk !== tk) cmds.push(["DEL", db.K.aluno(atk, nk)], ["SREM", db.K.turma(atk), nk], ["HDEL", db.K.placar(atk), nk]);
       for (const lk of await legacyKeys(tk)) if (lk !== atk) cmds.push(["DEL", db.K.aluno(lk, nk)], ["SREM", db.K.turma(lk), nk], ["HDEL", db.K.placar(lk), nk]);
       await db.pipeline(cmds);
-      return db.send(res, 200, { ok: true, updated: p.updated || 0 });
+      return db.send(res, 200, { ok: true, updated: p.updated || 0, turma });
     }
     res.setHeader("Allow", "GET, POST");
     db.send(res, 405, { erro: "Método não permitido" });

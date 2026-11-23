@@ -39,17 +39,35 @@ function keyOf(s) {
     .replace(/ /g, "-");
 }
 const clean = (s, max) => String(s || "").replace(/\s+/g, " ").trim().slice(0, max);
-/** "1º ano", "primeiro ano", "1 ano" e "1ano" viram a mesma turma ("1"); "2º ano A" e "2A" viram "2a" */
+/**
+  Chave da turma. Junta as formas diferentes de escrever a mesma turma:
+  "1 info A", "1° A INF", "1•A informatica", "1 ano a" e "1a" viram "1a";
+  "2 TEC", "2° informática", "Segundo TEC" e "2ANO" viram "2".
+  O que não segue o padrão ano + letra (ex.: "Professor") fica como está.
+*/
 function turmaKey(t) {
   const base = keyOf(t).replace(/-/g, "");
   const k = base
     .replace(/primeir[oa]/g, "1")
     .replace(/segund[oa]/g, "2")
     .replace(/terceir[oa]/g, "3")
-    .replace(/quart[oa]/g, "4")
-    .replace(/anos?|series?|turma/g, "");
+    .replace(/informatica|infor|info|inf|tecnico|tech|tec|anos?|series?|turma/g, "");
+  const m = k.match(/^(\d)([a-z])?\2?$/);
+  if (m) return m[1] + (m[2] || "");
   return k || base;
 }
+/** Turmas oficiais: o aluno escolhe uma delas na tela inicial */
+const OFICIAIS_PADRAO = ["1º A", "1º B", "1º C", "2º Tech"];
+async function oficiais() {
+  const [raw] = await pipeline([["GET", "bab:oficiais"]]);
+  try {
+    const l = JSON.parse(raw || "null");
+    if (Array.isArray(l) && l.length) return l;
+  } catch (e) {}
+  return OFICIAIS_PADRAO.slice();
+}
+/** nome oficial da turma desta chave, se houver */
+const oficialDe = (tk, lista) => lista.find((o) => turmaKey(o) === tk) || null;
 const safeKey = (k) => (/^[a-z0-9]{1,60}$/.test(String(k || "")) ? String(k) : "");
 const K = {
   turmas: "bab:turmas",
@@ -98,4 +116,4 @@ function query(req) {
   return Object.fromEntries(u.searchParams.entries());
 }
 
-module.exports = { configured, pipeline, keyOf, turmaKey, safeKey, clean, nomeCurto, resumo, K, send, readBody, query };
+module.exports = { configured, pipeline, keyOf, turmaKey, oficiais, oficialDe, OFICIAIS_PADRAO, safeKey, clean, nomeCurto, resumo, K, send, readBody, query };

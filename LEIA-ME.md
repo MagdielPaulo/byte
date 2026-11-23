@@ -102,7 +102,14 @@ Com o salvamento online ligado, o menu **Ranking** abre em **Todas as turmas**:
 - **Alunos**: todos os alunos de todas as turmas, com a coluna Turma. Dá para ordenar por XP (Geral), por lições de Python ou por lições de Banco de Dados.
 - **Minha turma** mostra só a turma do aluno.
 
-Aparece só o primeiro nome e a inicial do sobrenome (Ana Lima → Ana L.), e a tela atualiza sozinha a cada 30 segundos. Um aluno de teste, ou uma turma de teste como "Professor", sai do ranking quando você remove esse aluno na Área do professor.
+Aparece só o primeiro nome e a inicial do sobrenome (Ana Lima → Ana L.), e a tela atualiza sozinha a cada 30 segundos.
+
+## Turmas oficiais
+
+As turmas oficiais são **1º A, 1º B, 1º C e 2º Tech** (dá para mudar na Área do professor, em **Editar**). Com o salvamento online ligado, o aluno escolhe a turma numa lista na tela inicial, em vez de digitar.
+
+Quem digitou a turma de outro jeito antes ("1 info A", "1° A INF", "2 TEC", "2ANO"...) é reconhecido automaticamente: no ranking já aparece na turma certa, e ao entrar de novo passa a ficar salvo na turma oficial. Para arrumar tudo de uma vez, use **Organizar turmas** na Área do professor: ele mostra cada jeito de escrever e para qual turma oficial vai. Turmas que não seguem o padrão (como "Professor" ou "1ANO", sem letra) ficam como "Deixar como está" ou podem ser apagadas ali.
+
 
 ## Exercícios de código: sem colar
 

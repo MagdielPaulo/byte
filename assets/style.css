@@ -714,16 +714,23 @@ details.others > summary:hover { color: var(--text); }
 .rk-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 @media (max-width: 760px) { .rk-controls { align-items: flex-start; } }
 .rk-h { margin-top: 8px; }
-.turma-race { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
-.race-row { display: grid; grid-template-columns: 2.2em minmax(110px, 200px) 1fr auto; grid-template-areas: "pos name bar val" "pos sub sub sub"; align-items: center; gap: 2px 12px; padding: 10px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line-2); }
-.race-row.me { border-color: var(--cyan); }
-.race-pos { grid-area: pos; color: var(--muted); }
-.race-row:first-child .race-pos { color: var(--amber); }
-.race-name { grid-area: name; font-family: var(--f-display); font-size: 17px; color: var(--text); }
-.race-bar { grid-area: bar; height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden; }
-.race-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--violet)); border-radius: 5px; }
-.race-val { grid-area: val; color: var(--cyan); }
-.race-sub { grid-area: sub; }
+.turma-race { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 4px 0 16px; }
+.race-card { display: grid; grid-template-columns: auto 1fr; grid-template-areas: "pos name" "val val" "sub sub"; align-items: baseline; gap: 0 8px; padding: 8px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line-2); }
+.race-card.first { border-color: var(--amber); }
+.race-card.me { box-shadow: 0 0 0 1px var(--cyan) inset; }
+.race-pos { grid-area: pos; font-size: 12px; color: var(--muted); }
+.race-card.first .race-pos { color: var(--amber); }
+.race-name { grid-area: name; font-family: var(--f-display); font-size: 15px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.race-val { grid-area: val; font-size: 16px; color: var(--cyan); }
+.race-sub { grid-area: sub; font-size: 11px; color: var(--muted); }
+.ofs-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.ofs-chip { font-family: var(--f-mono); font-size: 12px; border: 1px solid var(--line-2); border-radius: 6px; padding: 2px 8px; color: var(--text); }
+.ofs-row .input-sm { min-width: 260px; }
+.organize { margin-top: 10px; padding-top: 12px; border-top: 1px dashed var(--line-2); display: flex; flex-direction: column; gap: 8px; }
+.organize .h3 { margin: 0; }
+.org-table select { font: inherit; font-size: 14px; background: var(--code-bg); color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 6px; }
+.turma-ask select { flex: 1; min-width: 120px; padding: 7px 10px; background: var(--code-bg); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font: inherit; }
+.turma-edit select { min-width: 130px; }
 .teacher-link { display: block; text-align: center; margin-top: 14px; font-size: 13px; color: var(--dim); }
 .teacher-link:hover { color: var(--muted); }
 .usermenu-pop .menu-teacher { color: var(--muted); font-size: 13px; }
