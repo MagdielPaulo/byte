@@ -119,18 +119,44 @@
       }
     return a;
   }
-  function downloadFile(name, content, type) {
-    const blob = new Blob([content], { type: type || "text/html;charset=utf-8" });
+  /** Celular (iPhone principalmente): o download comum some ou abre o arquivo em vez de salvar */
+  const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const IN_APP = /FBAN|FBAV|Instagram|Line\/|WhatsApp|TikTok/i.test(navigator.userAgent);
+  function downloadFile(name, content, type, onShared) {
+    const mime = type || "text/html;charset=utf-8";
+    // no celular, abre a tela de compartilhar: "Salvar em Arquivos" ou mandar direto (WhatsApp, e-mail)
+    if (IS_MOBILE && navigator.canShare && typeof File === "function") {
+      try {
+        const file = new File([content], name, { type: mime.split(";")[0] });
+        if (navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: name }).then(
+            () => onShared && onShared(true),
+            (e) => {
+              if (e && e.name === "AbortError") return; // a pessoa fechou a tela de compartilhar
+              saveBlob(name, content, mime);
+            }
+          );
+          return "share";
+        }
+      } catch (e) {}
+    }
+    saveBlob(name, content, mime);
+    return "download";
+  }
+  function saveBlob(name, content, mime) {
+    const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = name;
+    a.rel = "noopener";
     document.body.appendChild(a);
     a.click();
+    // o iPhone demora para começar a salvar: liberar o arquivo cedo demais faz o download sair vazio
     setTimeout(() => {
       URL.revokeObjectURL(url);
       a.remove();
-    }, 1000);
+    }, 60000);
   }
   const slug = (s) =>
     s
@@ -2882,8 +2908,14 @@
     if (!P) return;
     update((p) => (p.lastExport = Date.now()));
     const d = new Date();
-    downloadFile("relatorio-" + slug(P.name) + "-" + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + "-" + pad2(d.getHours()) + pad2(d.getMinutes()) + ".html", buildReportFile(P));
-    toast("info", "Relatório baixado", "Envie o arquivo para o professor.");
+    if (IN_APP) {
+      toast("error", "Abra no navegador", "Dentro do WhatsApp ou do Instagram o arquivo não é salvo. Toque nos três pontinhos e escolha Abrir no Safari ou no Chrome.");
+      return;
+    }
+    const how = downloadFile("relatorio-" + slug(P.name) + "-" + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + "-" + pad2(d.getHours()) + pad2(d.getMinutes()) + ".html", buildReportFile(P));
+    if (how === "share") toast("info", "Escolha onde salvar", "Toque em Salvar em Arquivos, ou mande direto para o professor pelo WhatsApp ou e-mail.");
+    else if (IS_MOBILE) toast("info", "Relatório baixado", "No iPhone ele fica no app Arquivos, na pasta Downloads. No Android, na pasta Downloads.");
+    else toast("info", "Relatório baixado", "Envie o arquivo para o professor.");
   }
   function parseReport(text) {
     let json = null;
